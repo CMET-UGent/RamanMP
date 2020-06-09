@@ -1,0 +1,1209 @@
+Linux version
+
+Using ReadLine,Boost
+mothur v.1.42.3
+Last updated: 01/17/2020
+by
+Patrick D. Schloss
+
+Department of Microbiology & Immunology
+
+University of Michigan
+http://www.mothur.org
+
+When using, please cite:
+Schloss, P.D., et al., Introducing mothur: Open-source, platform-independent, community-supported software for describing and comparing microbial communities. Appl Environ Microbiol, 2009. 75(23):7537-41.
+
+Distributed under the GNU General Public License
+
+Type 'help()' for information on the commands that are available
+
+For questions and analysis support, please visit our forum at https://forum.mothur.org
+
+Type 'quit()' to exit program
+
+[NOTE]: Setting random seed to 19760620.
+
+Batch Mode
+
+
+mothur > make.contigs(file=stability.files, processors=30)
+
+Using 30 processors.
+
+>>>>>	Processing file pair 341F_785R_Myr01A_R1.fastq - 341F_785R_Myr01A_R2.fastq (files 1 of 6)	<<<<<
+Making contigs...
+Done.
+
+It took 12 secs to assemble 25843 reads.
+
+
+>>>>>	Processing file pair 341F_785R_Myr02A_R1.fastq - 341F_785R_Myr02A_R2.fastq (files 2 of 6)	<<<<<
+Making contigs...
+Done.
+
+It took 19 secs to assemble 40870 reads.
+
+
+>>>>>	Processing file pair 341F_785R_Myr03A_R1.fastq - 341F_785R_Myr03A_R2.fastq (files 3 of 6)	<<<<<
+Making contigs...
+Done.
+
+It took 20 secs to assemble 43426 reads.
+
+
+>>>>>	Processing file pair 341F_785R_Myr04F_R1.fastq - 341F_785R_Myr04F_R2.fastq (files 4 of 6)	<<<<<
+Making contigs...
+Done.
+
+It took 12 secs to assemble 25246 reads.
+
+
+>>>>>	Processing file pair 341F_785R_Myr05F_R1.fastq - 341F_785R_Myr05F_R2.fastq (files 5 of 6)	<<<<<
+Making contigs...
+Done.
+
+It took 22 secs to assemble 49822 reads.
+
+
+>>>>>	Processing file pair 341F_785R_Myr06F_R1.fastq - 341F_785R_Myr06F_R2.fastq (files 6 of 6)	<<<<<
+Making contigs...
+Done.
+
+It took 20 secs to assemble 45283 reads.
+
+
+Group count: 
+My01	25843
+My02	40870
+My03	43426
+My04	25246
+My05	49822
+My06	45283
+
+Total of all groups is 230490
+
+It took 105 secs to process 230490 sequences.
+
+Output File Names: 
+stability.trim.contigs.fasta
+stability.trim.contigs.qual
+stability.scrap.contigs.fasta
+stability.scrap.contigs.qual
+stability.contigs.report
+stability.contigs.groups
+
+
+mothur > summary.seqs(fasta=stability.trim.contigs.fasta, processors=30)
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	1	284	284	0	3	1
+2.5%-tile:	1	402	402	0	4	5763
+25%-tile:	1	427	427	0	4	57623
+Median: 	1	427	427	0	5	115246
+75%-tile:	1	428	428	0	6	172868
+97.5%-tile:	1	428	428	5	6	224728
+Maximum:	1	542	542	36	263	230490
+Mean:	1	422	422	0	5
+# of Seqs:	230490
+
+It took 1 secs to summarize 230490 sequences.
+
+Output File Names:
+stability.trim.contigs.summary
+
+
+mothur > screen.seqs(fasta=stability.trim.contigs.fasta, group=stability.contigs.groups, maxambig=0, minlength=400, maxlength=430, processors=30)
+
+Using 30 processors.
+
+It took 0 secs to screen 230490 sequences, removed 35002.
+
+/******************************************/
+Running command: remove.seqs(accnos=stability.trim.contigs.bad.accnos.temp, group=stability.contigs.groups)
+Removed 35002 sequences from your group file.
+
+Output File Names: 
+stability.contigs.pick.groups
+
+/******************************************/
+
+Output File Names:
+stability.trim.contigs.good.fasta
+stability.trim.contigs.bad.accnos
+stability.contigs.good.groups
+
+
+It took 1 secs to screen 230490 sequences.
+
+mothur > summary.seqs(fasta=stability.trim.contigs.good.fasta)
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	1	400	400	0	4	1
+2.5%-tile:	1	402	402	0	4	4888
+25%-tile:	1	427	427	0	4	48873
+Median: 	1	427	427	0	5	97745
+75%-tile:	1	428	428	0	6	146617
+97.5%-tile:	1	428	428	0	6	190601
+Maximum:	1	430	430	0	12	195488
+Mean:	1	422	422	0	5
+# of Seqs:	195488
+
+It took 1 secs to summarize 195488 sequences.
+
+Output File Names:
+stability.trim.contigs.good.summary
+
+195488	59744
+
+Output File Names: 
+stability.trim.contigs.good.names
+stability.trim.contigs.good.unique.fasta
+
+
+mothur > count.seqs(name=stability.trim.contigs.good.names, group=stability.contigs.good.groups, compress=f)
+
+It took 1 secs to create a table for 195488 sequences.
+
+Total number of sequences: 195488
+
+Output File Names: 
+stability.trim.contigs.good.count_table
+
+
+mothur > align.seqs(seed=clear, fasta=stability.trim.contigs.good.unique.fasta, reference=silva.seed_v123.pcr341f785rinside.align, flip=T, processors=30)
+Setting random seed to 1579255460.
+
+
+Using 30 processors.
+
+Reading in the silva.seed_v123.pcr341f785rinside.align template sequences...	DONE.
+It took 4 to read  14914 sequences.
+
+Aligning sequences from stability.trim.contigs.good.unique.fasta ...
+It took 54 secs to align 59744 sequences.
+
+
+It took 54 seconds to align 59744 sequences.
+
+Output File Names: 
+stability.trim.contigs.good.unique.align
+stability.trim.contigs.good.unique.align.report
+
+
+mothur > summary.seqs(fasta=stability.trim.contigs.good.unique.align, count=stability.trim.contigs.good.count_table, processors=30)
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	2	16123	396	0	4	1
+2.5%-tile:	2	17012	401	0	4	4888
+25%-tile:	2	17012	426	0	4	48873
+Median: 	2	17012	426	0	5	97745
+75%-tile:	2	17012	427	0	6	146617
+97.5%-tile:	2	17012	427	0	6	190601
+Maximum:	1502	17012	429	0	12	195488
+Mean:	10	17011	421	0	5
+# of unique seqs:	59744
+total # of seqs:	195488
+
+It took 2 secs to summarize 195488 sequences.
+
+Output File Names:
+stability.trim.contigs.good.unique.summary
+
+
+mothur > screen.seqs(fasta=stability.trim.contigs.good.unique.align, count=stability.trim.contigs.good.count_table, summary=stability.trim.contigs.good.unique.summary, start=2, end=17012, maxhomop=12, processors=30)
+
+Using 30 processors.
+
+It took 1 secs to screen 59744 sequences, removed 941.
+
+/******************************************/
+Running command: remove.seqs(accnos=stability.trim.contigs.good.unique.bad.accnos.temp, count=stability.trim.contigs.good.count_table)
+Removed 1477 sequences from your count file.
+
+Output File Names: 
+stability.trim.contigs.good.pick.count_table
+
+/******************************************/
+
+Output File Names:
+stability.trim.contigs.good.unique.good.summary
+stability.trim.contigs.good.unique.good.align
+stability.trim.contigs.good.unique.bad.accnos
+stability.trim.contigs.good.good.count_table
+
+
+It took 1 secs to screen 59744 sequences.
+
+mothur > summary.seqs(fasta=stability.trim.contigs.good.unique.good.align, count=stability.trim.contigs.good.good.count_table)
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	2	17012	396	0	4	1
+2.5%-tile:	2	17012	401	0	4	4851
+25%-tile:	2	17012	426	0	4	48503
+Median: 	2	17012	426	0	5	97006
+75%-tile:	2	17012	427	0	6	145509
+97.5%-tile:	2	17012	427	0	6	189161
+Maximum:	2	17012	429	0	12	194011
+Mean:	2	17012	421	0	5
+# of unique seqs:	58803
+total # of seqs:	194011
+
+It took 2 secs to summarize 194011 sequences.
+
+Output File Names:
+stability.trim.contigs.good.unique.good.summary
+
+
+mothur > filter.seqs(fasta=stability.trim.contigs.good.unique.good.align, vertical=T, trump=.)
+
+Using 30 processors.
+Creating Filter... 
+It took 1 secs to create filter for 58803 sequences.
+
+
+Running Filter... 
+It took 1 secs to filter 58803 sequences.
+
+
+
+Length of filtered alignment: 687
+Number of columns removed: 16325
+Length of the original alignment: 17012
+Number of sequences used to construct filter: 58803
+
+Output File Names: 
+stability.filter
+stability.trim.contigs.good.unique.good.filter.fasta
+
+
+mothur > summary.seqs(fasta=stability.trim.contigs.good.unique.good.filter.fasta)
+
+Using 30 processors.
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.fasta.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	1	687	396	0	4	1
+2.5%-tile:	1	687	401	0	4	1471
+25%-tile:	1	687	426	0	4	14701
+Median: 	1	687	426	0	5	29402
+75%-tile:	1	687	427	0	6	44103
+97.5%-tile:	1	687	427	0	6	57333
+Maximum:	1	687	429	0	12	58803
+Mean:	1	687	422	0	5
+# of Seqs:	58803
+
+It took 0 secs to summarize 58803 sequences.
+
+Output File Names:
+stability.trim.contigs.good.unique.good.filter.summary
+
+58803	58504
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.count_table
+stability.trim.contigs.good.unique.good.filter.unique.fasta
+
+
+mothur > pre.cluster(fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table, diffs=4, processors=30)
+
+Using 30 processors.
+Reducing processors to 6.
+
+/******************************************/
+Running command: split.groups(groups=My02, fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table)
+
+/******************************************/
+Running command: split.groups(groups=My03, fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table)
+
+/******************************************/
+Running command: split.groups(groups=My04, fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table)
+
+/******************************************/
+Running command: split.groups(groups=My05, fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table)
+
+/******************************************/
+Running command: split.groups(groups=My06, fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table)
+
+/******************************************/
+Running command: split.groups(groups=My01, fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, count=stability.trim.contigs.good.unique.good.filter.count_table)
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.My04.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.fastaMy04)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.fastaMy04.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.My02.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.fastaMy02)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.fastaMy02.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.My01.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.fastaMy01)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.fastaMy01.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.My03.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.fastaMy03)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.fastaMy03.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.My06.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.fastaMy06)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.fastaMy06.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.My05.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.fastaMy05)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.fastaMy05.
+Selected 7534 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fastaMy04
+
+/******************************************/
+Done.
+Selected 11918 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fastaMy02
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.My04.count_table
+stability.trim.contigs.good.unique.good.filter.unique.My04.fasta
+
+/******************************************/
+
+Processing group My04:
+Selected 9623 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fastaMy01
+
+/******************************************/
+Done.
+Selected 12062 sequences from your fasta file.
+Selected 12062 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fastaMy06
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fastaMy03
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.My02.count_table
+stability.trim.contigs.good.unique.good.filter.unique.My02.fasta
+
+/******************************************/
+
+Processing group My02:
+/******************************************/
+Done.
+/******************************************/
+Done.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.My01.count_table
+stability.trim.contigs.good.unique.good.filter.unique.My01.fasta
+
+/******************************************/
+
+Processing group My01:
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.My03.count_table
+stability.trim.contigs.good.unique.good.filter.unique.My03.fasta
+
+/******************************************/
+
+Processing group My03:
+/******************************************/
+Done.
+Selected 14380 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fastaMy05
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.My06.count_table
+stability.trim.contigs.good.unique.good.filter.unique.My06.fasta
+
+/******************************************/
+
+Processing group My06:
+/******************************************/
+Done.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.My05.count_table
+stability.trim.contigs.good.unique.good.filter.unique.My05.fasta
+
+/******************************************/
+
+Processing group My05:
+My04	7534	1167	6367
+Total number of sequences before pre.cluster was 7534.
+pre.cluster removed 6367 sequences.
+
+It took 1 secs to cluster 7534 sequences.
+My01	9623	1360	8263
+Total number of sequences before pre.cluster was 9623.
+pre.cluster removed 8263 sequences.
+
+It took 0 secs to cluster 9623 sequences.
+My03	12062	2389	9673
+Total number of sequences before pre.cluster was 12062.
+pre.cluster removed 9673 sequences.
+
+It took 0 secs to cluster 12062 sequences.
+My02	11918	2225	9693
+Total number of sequences before pre.cluster was 11918.
+pre.cluster removed 9693 sequences.
+
+It took 0 secs to cluster 11918 sequences.
+My06	12062	1734	10328
+Total number of sequences before pre.cluster was 12062.
+pre.cluster removed 10328 sequences.
+
+It took 0 secs to cluster 12062 sequences.
+My05	14380	2480	11900
+Total number of sequences before pre.cluster was 14380.
+pre.cluster removed 11900 sequences.
+
+It took 1 secs to cluster 14380 sequences.
+
+Deconvoluting count table results...
+It took 0 secs to merge 13583 sequences group data.
+/******************************************/
+Running command: get.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.fasta, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.count_table.temp)
+Selected 13013 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.pick.fasta
+
+/******************************************/
+It took 5 secs to run pre.cluster.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My01.map
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My02.map
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My03.map
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My04.map
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My05.map
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My06.map
+
+
+mothur > summary.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.count_table)
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	1	687	396	0	4	1
+2.5%-tile:	1	687	401	0	4	4851
+25%-tile:	1	687	426	0	4	48503
+Median: 	1	687	426	0	5	97006
+75%-tile:	1	687	427	0	6	145509
+97.5%-tile:	1	687	427	0	6	189161
+Maximum:	1	687	429	0	12	194011
+Mean:	1	687	421	0	5
+# of unique seqs:	13013
+total # of seqs:	194011
+
+It took 0 secs to summarize 194011 sequences.
+
+Output File Names:
+stability.trim.contigs.good.unique.good.filter.unique.precluster.summary
+
+
+mothur > chimera.vsearch(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.count_table, dereplicate=t, processors=30, vsearch=/usr/local/software/vsearch-2.11.1-linux-x86_64/bin/vsearch)
+
+Using 30 processors.
+Checking sequences from stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta ...
+
+/******************************************/
+Running command: split.groups(groups=My01-My02-My03-My04-My05-My06, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.count_table)
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.My01.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy01)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy01.
+Selected 2015 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fastaMy01
+
+/******************************************/
+Done.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.My02.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy02)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy02.
+Selected 2880 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fastaMy02
+
+/******************************************/
+Done.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.My03.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy03)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy03.
+Selected 2665 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fastaMy03
+
+/******************************************/
+Done.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.My04.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy04)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy04.
+Selected 1192 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fastaMy04
+
+/******************************************/
+Done.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.My05.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy05)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy05.
+Selected 2781 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fastaMy05
+
+/******************************************/
+Done.
+/******************************************/
+Running command: get.seqs(dups=f, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.My06.count_table.accnos, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy06)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fastaMy06.
+Selected 2050 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fastaMy06
+
+/******************************************/
+Done.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My01.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My01.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My02.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My02.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My03.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My03.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My04.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My04.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My05.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My05.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My06.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.My06.fasta
+
+/******************************************/
+
+It took 3 secs to check 2015 sequences from group My01.
+
+It took 4 secs to check 2880 sequences from group My02.
+
+It took 3 secs to check 2665 sequences from group My03.
+
+It took 2 secs to check 1192 sequences from group My04.
+
+It took 4 secs to check 2781 sequences from group My05.
+
+It took 4 secs to check 2050 sequences from group My06.
+
+Output File Names:
+stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.chimeras
+stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.accnos
+
+
+mothur > remove.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta, accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.accnos)
+[WARNING]: This command can take a namefile and you did not provide one. The current namefile is stability.trim.contigs.good.names which seems to match stability.trim.contigs.good.unique.good.filter.unique.precluster.fasta.
+Removed 4748 sequences from your fasta file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fasta
+
+
+mothur > summary.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.count_table)
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	1	687	397	0	4	1
+2.5%-tile:	1	687	401	0	4	4399
+25%-tile:	1	687	426	0	4	43981
+Median: 	1	687	426	0	5	87961
+75%-tile:	1	687	427	0	6	131941
+97.5%-tile:	1	687	427	0	6	171523
+Maximum:	1	687	429	0	11	175920
+Mean:	1	687	422	0	5
+# of unique seqs:	8265
+total # of seqs:	175920
+
+It took 0 secs to summarize 175920 sequences.
+
+Output File Names:
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.summary
+
+
+mothur > classify.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.count_table, reference=silva.nr_v132.align, taxonomy=silva.nr_v132.tax, cutoff=85, processors=30)
+
+Using 30 processors.
+Generating search database...    DONE.
+It took 230 seconds generate search database.
+
+Reading in the silva.nr_v132.tax taxonomy...	DONE.
+Calculating template taxonomy tree...     DONE.
+Calculating template probabilities...     DONE.
+It took 387 seconds get probabilities.
+Classifying sequences from stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fasta ...
+[WARNING]: M02042_239_000000000-CVMR5_1_1118_19504_9975 could not be classified. You can use the remove.lineage command with taxon=unknown; to remove such sequences.
+It took 33 secs to classify 8265 sequences.
+
+
+It took 33 secs to classify 8265 sequences.
+
+
+It took 1 secs to create the summary file for 8265 sequences.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.taxonomy
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.tax.summary
+
+
+mothur > remove.lineage(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.count_table, taxonomy=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.taxonomy, taxon=Chloroplast-Mitochondria-unknown-Archaea-Eukaryota)
+
+[NOTE]: The count file should contain only unique names, so mothur assumes your fasta, list and taxonomy files also contain only uniques.
+
+
+/******************************************/
+Running command: remove.seqs(accnos=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.accnos, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.count_table, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.fasta)
+
+[NOTE]: The count file should contain only unique names, so mothur assumes your fasta, list and taxonomy files also contain only uniques.
+
+Removed 1 sequences from your fasta file.
+Removed 1 sequences from your count file.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta
+stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table
+
+/******************************************/
+
+Output File Names:
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.pick.taxonomy
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.accnos
+stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta
+
+
+mothur > summary.seqs(count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table)
+Using stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta as input file for the fasta parameter.
+
+Using 30 processors.
+
+		Start	End	NBases	Ambigs	Polymer	NumSeqs
+Minimum:	1	687	397	0	4	1
+2.5%-tile:	1	687	401	0	4	4398
+25%-tile:	1	687	426	0	4	43980
+Median: 	1	687	426	0	5	87960
+75%-tile:	1	687	427	0	6	131940
+97.5%-tile:	1	687	427	0	6	171522
+Maximum:	1	687	429	0	11	175919
+Mean:	1	687	422	0	5
+# of unique seqs:	8264
+total # of seqs:	175919
+
+It took 0 secs to summarize 175919 sequences.
+
+Output File Names:
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.summary
+
+
+mothur > cluster.split(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table, taxonomy=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.pick.taxonomy, splitmethod=classify, taxlevel=4, processors=30)
+
+Using 30 processors.
+Splitting the file...
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.0.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 3 secs to find distances for 5433 sequences. 1553369 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.0.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.1.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 936 sequences. 51846 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.1.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.2.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 380 sequences. 29154 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.2.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.3.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 392 sequences. 23895 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.3.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.4.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 371 sequences. 379 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.4.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.5.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 452 sequences. 20755 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.5.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.6.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 56 sequences. 439 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.6.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.7.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 79 sequences. 348 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.7.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.8.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 85 sequences. 1762 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.8.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.9.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 14 sequences. 35 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.9.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.10.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 3 sequences. 1 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.10.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.11.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 21 sequences. 116 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.11.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.12.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 8 sequences. 1 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.12.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.13.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 7 sequences. 4 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.13.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.14.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 6 sequences. 8 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.14.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.15.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 8 sequences. 0 distances below cutoff 0.03.
+
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.15.dist is blank. This can result if there are no distances below your cutoff.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.15.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.16.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 4 sequences. 3 distances below cutoff 0.03.
+
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.16.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.17.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 4 sequences. 0 distances below cutoff 0.03.
+
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.17.dist is blank. This can result if there are no distances below your cutoff.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.17.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.18.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 2 sequences. 0 distances below cutoff 0.03.
+
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.18.dist is blank. This can result if there are no distances below your cutoff.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.18.dist
+
+/******************************************/
+Running command: dist.seqs(fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.19.temp, processors=30, cutoff=0.03)
+
+Using 30 processors.
+/******************************************/
+
+Sequence	Time	Num_Dists_Below_Cutoff
+
+It took 0 secs to find distances for 2 sequences. 0 distances below cutoff 0.03.
+
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.19.dist is blank. This can result if there are no distances below your cutoff.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.19.dist
+
+It took 6 seconds to split the distance file.
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.1.dist
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.14.dist
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.16.dist
+
+You did not set a cutoff, using 0.03.
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.13.dist
+
+You did not set a cutoff, using 0.03.
+
+You did not set a cutoff, using 0.03.
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.9.dist
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.10.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.12.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+0	3	0	3	0	
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+1	0	0.5	
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+1	0.5	0	4	7	0	4	3	17	0	1	0	
+
+0.75	0.5	1	
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.11.dist
+1	0	2	0	1	1	0.944444	0	1	1	0.952381	0.636364	1	0.841625	0	0.857143	
+
+0.666667	1	
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+1	0.666667	
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+0.733333	0	0	
+
+0.564076	0.666667	
+
+35	53	3	0	0	27	0	1	0	1	0	0.964286	1	1	0.964286	0.946429	0	0	
+
+0.921053	
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+1	0.921053	0.967033	0.933654	0.958904	
+
+111	93	1	5	0.956897	0.989362	0.991071	0.94898	0.991071	0.971429	0.94315	0.973684	
+
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.7.dist
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.6.dist
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.4.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+285	2706	27	63	0.818966	0.990121	0.913462	0.977248	0.913462	0.970789	0.848918	0.863636	
+
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+416	1085	16	23	0.947608	0.985468	0.962963	0.979242	0.962963	0.974675	0.937629	0.955224	
+
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+352	68233	23	27	0.92876	0.999663	0.938667	0.999604	0.938667	0.999272	0.933334	0.933687	
+
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.8.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+1402	1648	160	360	0.795687	0.911504	0.897567	0.820717	0.897567	0.854342	0.712716	0.843562	
+
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.5.dist
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.3.dist
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.2.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+22544	49330	3411	1351	0.943461	0.935325	0.86858	0.973343	0.86858	0.937862	0.860157	0.904473	
+
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+16838	78085	3086	3917	0.811274	0.961981	0.845111	0.952233	0.845111	0.931293	0.785208	0.827847	
+
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.1.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+27142	39858	2998	2012	0.930987	0.930045	0.900531	0.951947	0.900531	0.930426	0.856744	0.915506	
+
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+48511	378661	7073	3335	0.935675	0.981664	0.872751	0.99127	0.872751	0.976215	0.890281	0.903118	
+
+
+Clustering stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta.0.dist
+
+tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+1280083	12930047	272612	273286	0.824069	0.979352	0.824427	0.979302	0.824427	0.963005	0.803574	0.824248	
+
+It took 10 seconds to cluster
+Merging the clustered files...
+It took 0 seconds to merge.
+/******************************************/
+Running command: sens.spec(cutoff=0.03, list=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list, column=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.dist, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table)
+
+NOTE: sens.spec assumes that only unique sequences were used to generate the distance matrix.
+
+label	cutoff	numotus	tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+0.03	0.03	2674	1397726	32171191	289410	284389	0.830934	0.991084	0.828461	0.991238	0.828461	0.983194	0.820857	0.829695
+
+It took 6 to run sens.spec.
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.sensspec
+
+/******************************************/
+Done.
+
+
+label	cutoff	numotus	tp	tn	fp	fn	sensitivity	specificity	ppv	npv	fdr	accuracy	mcc	f1score
+0.03	0.03	2674	1397726	32171191	289410	284389	0.8309	0.9911	0.8285	0.9912	0.8285	0.9832	0.8209	0.8297
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.dist
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.sensspec
+
+
+mothur > make.shared(list=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table, label=0.03)
+0.03
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.shared
+
+
+mothur > classify.otu(list=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table, taxonomy=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.pick.taxonomy, label=0.03)
+0.03	2674
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.03.cons.taxonomy
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.03.cons.tax.summary
+
+
+mothur > get.oturep(list=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table, fasta=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta, method=abundance)
+You did not provide a label, using 0.03.
+0.03	2674
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.03.rep.count_table
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.03.rep.fasta
+
+
+mothur > quit()
+
+
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Detected 15 [WARNING] messages, please review.
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>

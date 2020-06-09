@@ -1,0 +1,38 @@
+Linux version
+
+Using ReadLine,Boost
+mothur v.1.42.3
+Last updated: 01/17/2020
+by
+Patrick D. Schloss
+
+Department of Microbiology & Immunology
+
+University of Michigan
+http://www.mothur.org
+
+When using, please cite:
+Schloss, P.D., et al., Introducing mothur: Open-source, platform-independent, community-supported software for describing and comparing microbial communities. Appl Environ Microbiol, 2009. 75(23):7537-41.
+
+Distributed under the GNU General Public License
+
+Type 'help()' for information on the commands that are available
+
+For questions and analysis support, please visit our forum at https://forum.mothur.org
+
+Type 'quit()' to exit program
+
+[NOTE]: Setting random seed to 19760620.
+
+Interactive Mode
+
+
+
+mothur > classify.otu(list=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list_cp.list, count=stability.trim.contigs.good.unique.good.filter.unique.precluster.denovo.vsearch.pick.pick.count_table, taxonomy=stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.nr_v132.wang.pick.taxonomy, basis=sequence, label=0.03)
+0.03	8264
+
+Output File Names: 
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list_cp.0.03.cons.taxonomy
+stability.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.list_cp.0.03.cons.tax.summary
+
+quitting mothur

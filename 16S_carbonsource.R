@@ -3,7 +3,7 @@
 
 
 #location
-setwd("/media/projects2/CristinaGT/MicrobialProtein_Myrsini/16Sseq/fastq/")
+setwd("/media/projects2/CristinaGT/RamanMP/16Sseq_carbonsource/fastq/")
 
 #libs
 library(data.table)

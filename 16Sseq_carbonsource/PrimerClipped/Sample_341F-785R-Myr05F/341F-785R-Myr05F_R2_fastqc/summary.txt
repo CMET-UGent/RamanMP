@@ -1,0 +1,11 @@
+PASS	Basic Statistics	341F-785R-Myr05F_R2.fastq
+WARN	Per base sequence quality	341F-785R-Myr05F_R2.fastq
+PASS	Per sequence quality scores	341F-785R-Myr05F_R2.fastq
+FAIL	Per base sequence content	341F-785R-Myr05F_R2.fastq
+FAIL	Per base GC content	341F-785R-Myr05F_R2.fastq
+FAIL	Per sequence GC content	341F-785R-Myr05F_R2.fastq
+PASS	Per base N content	341F-785R-Myr05F_R2.fastq
+WARN	Sequence Length Distribution	341F-785R-Myr05F_R2.fastq
+FAIL	Sequence Duplication Levels	341F-785R-Myr05F_R2.fastq
+FAIL	Overrepresented sequences	341F-785R-Myr05F_R2.fastq
+FAIL	Kmer Content	341F-785R-Myr05F_R2.fastq
