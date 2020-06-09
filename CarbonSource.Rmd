@@ -5,26 +5,436 @@ date: "6/9/2020"
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library("Phenoflow")
+library("mclust")
+library("plyr")
+library("dplyr")
+library("gridExtra")
+library("tidyr")
+library("phyloseq")
+library("readr")
+library("ggplot2")
+library("gridExtra")
+library("fpc")
+library("RColorBrewer")
+library("vegan")
+library("tsne")
+library("sandwich")
+library("cluster")
+library("grid")
+library("egg")
+library("MALDIquant")
+library("hyperSpec")
+library("reshape2")
+library("caret") # for cross validation
+library("foreach") # for parallelization
+library("flowAI") # for denoising of FCM data
+library("NISTunits")
+library("dplyr")
+source("functions.R")
+
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r preprocessing, echo=FALSE}
+set.seed(777)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+#### Basefolder and working directory ####  
+basefolder <- "/media/projects2/CristinaGT/RamanMP/spc_carbonsource/"
 
-```{r cars}
-summary(cars)
+
+# DATA (spc files)
+filenames <- list.files(basefolder, pattern=".spc")
+
+hy.setOptions(file.keep.name = TRUE)
+# read the first spectrum an order the wavelenghts with orderwl()
+hs <-orderwl(read.spc(paste0(basefolder, filenames[1])))
+
+# rbind to add spectra to data
+for(i in 2:length(filenames)) {
+  hs <- rbind(hs, orderwl(read.spc(paste0(basefolder, filenames[i]))))
+}
+
+
+#### Rename spectra in R ####
+labels <- filenames
+
+Treatment <- unlist(lapply(strsplit(labels,split="_"),function(x) (x[1])))
+Time <- unlist(lapply(strsplit(labels,split="_"),function(x) (x[2])))
+Replicate<- unlist(lapply(strsplit(labels,split="_"),function(x) (x[3])))
+
+
+cell.name=rep("",length(filenames))
+for (i in 1:length(cell.name)) {
+  cell.name[i] <-paste(Treatment[i], Time[i],collapse=NULL)
+}
+
+media_rep=rep("",length(filenames))
+for (i in 1:length(media_rep)) {
+  media_rep[i] <-paste(Treatment[i], Replicate[i],collapse=NULL)
+}
+
+media_time=rep("",length(filenames))
+for (i in 1:length(media_time)) {
+  media_time[i] <-paste(Treatment[i], Time[i],collapse=NULL)
+}
+
+all_tags=rep("",length(filenames))
+for (i in 1:length(all_tags)) {
+  all_tags[i] <-paste(Treatment[i], Time [i],Replicate[i],collapse=NULL)
+}
+
+
+
+#Smooth
+hs.smooth <- spc.loess (hs, c(seq (0, 3000)))
+plot (hs.smooth)
+
+# hyperspec --> maldiquant ##Or use function from Microraman package
+mq <- list()
+for (i in 1:length(filenames)){
+  mass.spectrum <- createMassSpectrum(mass=hs.smooth@wavelength, intensity=hs.smooth@data$spc[i,])
+  metaData(mass.spectrum) <- list(name=cell.name[i])
+  mq <- c(mq,mass.spectrum)
+}
+
+
+## TRIMMING
+# select the relevant part of the fingerprint: 600-1800 cm-1 
+mq.trim <- trim(mq, range=c(400, 1800))
+wavelengths.trim <-  mass(mq.trim[[1]]) #333 (intervals are unequally distributed)
+
+#This chunk of code shows that the intervals between the different wavenumbers are not equal
+interval <- NULL
+name.interval <- NULL
+for (i in 1:length(wavelengths.trim)-1){
+  interval[i] <- wavelengths.trim[i+1]-wavelengths.trim[i]
+  name.interval[i] <- paste(round(wavelengths.trim[i], digits = 4),round(wavelengths.trim[i+1], digits=4), sep=" - ")
+}
+plot(interval, pch = 20, cex = 0.8, bty="l",main = "Interval between wavenumbers", ylab=expression("Size interval [cm"^-1*"]"),xlab=expression("Range wavenumbers [cm"^-1*"]"),xaxt="n")
+axis(at = c(1,332), side = 1, labels = c(name.interval[1],name.interval[322]),las = 0)
+
+
+# BASELINE CORRECTION
+# influence number of iterations?
+library(RColorBrewer)
+iteration.options <- c(5,10,20,30,40,50,100)
+colors <- brewer.pal(7, "Spectral")
+#dev.off()
+layout(rbind(1,2), heights=c(6,1))
+plot(mq.trim[[1]],main = "SNIP baseline correction: influence of iterations", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[1]])), max(intensity(mq.trim[[1]]))))
+for (i in 1:length(iteration.options)){
+  baseline <- estimateBaseline(mq.trim[[1]], method="SNIP",iterations=iteration.options[i])
+  lines(baseline,col=colors[i],lwd=2)
+}
+par(mar=c(0, 0, 0, 0))
+plot.new()
+legend('bottomleft','groups',legend = iteration.options, lwd=2, lty=c(1,1,1,1,1,1,1),col=colors, ncol=3, bty ="n")
+plot(mq.trim[[1]],main = "SNIP baseline correction: influence of iterations", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[1]])), max(intensity(mq.trim[[1]]))))
+for (i in 1:length(iteration.options)){
+  baseline <- estimateBaseline(mq.trim[[1]], method="SNIP",iterations=iteration.options[i])
+  lines(baseline,col=colors[i],lwd=2)
+}
+legend('bottomleft','groups',legend = iteration.options, lwd=1, lty=c(1,1,1,1,1,1,1),col=colors, ncol=3, bty ="o")
+
+
+# optimal number of iterations?
+number.of.iterations <- 10
+i <- 2
+dev.off()
+plot(mq.trim[[i]],main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[i]])), max(intensity(mq.trim[[i]]))))
+baseline <- estimateBaseline(mq.trim[[i]], method="SNIP",iterations=number.of.iterations)
+lines(baseline,col="blue",lwd=2)
+plot(mq.trim[[i]],main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[i]])), max(intensity(mq.trim[[i]]))))
+baseline <- estimateBaseline(mq.trim[[i]], method="SNIP",iterations=number.of.iterations)
+lines(baseline,col="blue",lwd=2)
+
+# correct all spectra
+mass.spectra.baseline.corr <- removeBaseline(mq.trim, method="SNIP",iterations=number.of.iterations)
+
+# plot a spectrum to see the effect
+plot(mass.spectra.baseline.corr[[1]], main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mass.spectra.baseline.corr[[i]])), max(intensity(mass.spectra.baseline.corr[[i]]))))
+
+
+# NORMALISATION:
+# surface = 1
+mq.norm <- calibrateIntensity(mass.spectra.baseline.corr, method="TIC",range=c(400, 1800))
+plot(mq.norm[[i]], main = "Normalisation", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mq.norm[[i]])), max(intensity(mq.norm[[i]]))))
+par(mfrow=c(2,1))
+
+#Aligned spectra
+spectra_aligned <- alignSpectra(mq.norm ,tolerance=5, 
+                        halfWindowSize=1, reference =mq.norm[[5]])
+
+#### change MALDIquant (mq.norm) object in Hyperspec (hs.norm) object ####
+# get the intensity matrix from the mq.norm object
+matrix.spectra <- matrix(nrow=  length(spectra_aligned), ncol = length(wavelengths.trim))
+for (i in 1:length(spectra_aligned)){
+  matrix.spectra[i,] <- intensity(spectra_aligned[[i]])
+}
+
+hs.norm <- new ("hyperSpec", spc = matrix.spectra, wavelength = wavelengths.trim, labels= cell.name)
+
+############################################
+#### change MALDIquant (mq.norm) object in Hyperspec (hs.norm) object ####
+# get the intensity matrix from the mq.norm object
+matrix.spectra <- matrix(nrow=  length(mq.norm), ncol = length(wavelengths.trim))
+
+#select control and two average treatments
+
+#matrix.spectra <- matrix(nrow=  length(mq.norm), ncol = length(wavelengths))
+for (i in 1:length(mq.norm)){
+  matrix.spectra[i,] <- intensity(mq.norm[[i]])
+}
+
+# put the intensity values in a dataframe
+
+df_AAFA <- as.data.frame(hs.norm@data$spc, col.names=hs.norm[1:357]@wavelength , check.names=TRUE)
+names(df_AAFA) <- make.names(names(df_AAFA)) #Subset for AA and FA
+
+groups_AAFA<-cell.name
+df_AAFA <- cbind(df_AAFA, groups_AAFA)
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r contrast, echo=FALSE}
+ contrast_AAFA <- ram_contrast(hyprs = hs.norm, comp1 = c("AA t0", "AA t3", "AA t5"), 
+ comp2 = c("FA t0","FA t10","FA t5")) 
+
+
+ contrast_AAFA_t0 <- ram_contrast(hyprs = hs.norm, comp1 = c("AA t0"), 
+ comp2 = c("FA t0"))
+ 
+  contrast_AAFA_tmed <- ram_contrast(hyprs = hs.norm, comp1 = c("AA t3"), 
+ comp2 = c("FA t5"))
+  
+   contrast_AAFA_tfin <- ram_contrast(hyprs = hs.norm, comp1 = c("AA t5"), 
+ comp2 = c("FA t10"))
+  
+   
+x = 0.09
+y= -0.15
+density_AAFA <- contrast_AAFA[which (contrast_AAFA$Density > x | contrast_AAFA$Density < y),]
+density_AAFA
+
+
+df.contrast_AAFA <- as.data.frame(contrast_AAFA)
+
+ggplot(df.contrast_AAFA, aes(x =df.contrast_AAFA$Wavenumber, y= df.contrast_AAFA$Density))+
+  geom_line()+
+  labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Contrast analysis AA vs FA")+
+  theme_bw()+
+  geom_vline(xintercept=density_AAFA$Wavenumber,  color = "seagreen4", size=0.3,alpha=0.3)
+
+
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r biomolecules peaks, echo=FALSE}
+## Plot all spectra and the biomolecules
+df<-  hyperSpec::as.t.df(mean_pm_sd (hs.norm) )
+
+plot_df<-ggplot(df, aes (x = .wavelength))+
+  geom_ribbon (aes (ymin = `mean - sd`, ymax = `mean + sd`),
+               fill = "#00000030") +
+  geom_line (aes (y = mean))+
+  #ylim(0,0.05)+
+  ggplot2::labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Peaks for biomolecule estimation")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                                                                                                                 panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+plot_df <- plot_df+ ggplot2::geom_vline(xintercept=1665,  #my spectra have a +4 shift compared to Teng 2016
+                                            color = "springgreen4", size=1)+ #lipids
+    geom_vline(xintercept=c(551, 655, 766, 1184, 1170,1173,1018,1022, 1498, 514),   #aminoacids
+               
+               
+             color = "skyblue", size=1)+ 
+  geom_vline(xintercept=c(1009, 1020),  #proteins
+             color = "skyblue4", size=1)+ 
+  geom_vline(xintercept=1582,  #nucleic acids
+             color = "violetred3", size=1)+
+  geom_vline(xintercept=1531,   #carotenoids
+             color = "darkgoldenrod", size=1)
+  scale_y_continuous(limits=c(0,0.8)) 
+
+
+```
+
+```{r boxplot biomolecules, echo=FALSE}
+## Teng 2016 propose unsat lipids 1658, Proteins 1002, Nucleic acids 1575/1481/812/783. I need to correct for around 6 cm-1
+d<-as.data.frame(meanpeaks_AAFA)
+
+Int_Lipids<- subset(df_AAFA, select="1665")
+Int_Proteins <-subset(df_AAFA, select=c("1009","1020")) ### Aromatic peaks. Our other database is +2cm-1
+#Int_Proteins <-subset(df_AAFA, select=c("561","565","1186","1222","1500")) ### Our correlation from the benchmark
+Int_Proteins <-rowSums(Int_Proteins)
+Int_Nucleic<-subset(df_AAFA, select="1582")
+Int_Carotenoids<-subset(df_AAFA, select="1531") #From my database
+
+Int_biomolecules <- cbind(Int_Lipids,Int_Proteins, Int_Nucleic, Int_Carotenoids)
+Int_biomolecules$groups<-groups_AAFA
+colnames(Int_biomolecules)<-c("Unsaturated lipids","Proteins", "Nucleic acids", "Carotenoids", "groups")
+
+Int_biomolecules <- as.data.frame(Int_biomolecules)
+
+
+as.data.frame(melt(Int_biomolecules, id.vars="groups")) -> plot_boxplot
+
+colorCodes <- c("AA t0"= "#7ab97a","AA t3"= "forestgreen","AA t5"= "#0d370d", "FA t0"="#8bb9e6", 
+                "FA t5"="dodgerblue3","FA t10"="#0c3a66")
+
+library(forecast)
+singlecell_other <- plot_boxplot %>%
+   mutate(groups=factor(groups, levels=c("AA t0","AA t3","AA t5","FA t0","FA t5","FA t10"))) %>%   
+ggplot(aes(x = groups, y= value, fill=groups))+
+   geom_boxplot()+
+    labs(x= expression(" "), y= "Intensity [A.U.]", title= "Other biomolecules")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),axis.text.x = element_text(angle = 90, size=15),
+panel.background = element_blank(), axis.line = element_line(), axis.title.y = element_text(size=15), axis.text.y = element_text(size=12),  legend.position = "none")  +
+  scale_fill_manual(values=colorCodes,labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+ facet_wrap(~variable, scales = "free_y")+
+  scale_y_continuous(labels=fancy_scientific)+
+  scale_x_discrete(labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+ 
+  ggpubr::stat_compare_means(comparisons = list(c("AA t0", "AA t3"),c("AA t0", "AA t5"), c("AA t5", "AA t3"),
+                     c("FA t0", "FA t5"),c("FA t0", "FA t10"),c("FA t5", "FA t10")),label = "p.signif", size= 4)
+  
+## Normality 
+
+shapiro.test(Int_biomolecules$Lipids) ## Some datapoints do not folow a normal distribution
+
+#Add FCM counts
+FCM_correction  <- as.factor(Int_biomolecules$groups)
+FCM_correction <- mapvalues(FCM_correction, from = c("AA t0","AA t3","AA t5","FA t0","FA t5","FA t10"), to = c("76689932","106467678","227692851", "272282556", "223289230", "635870900"))#These are numbers from average_FCM$Total.cells
+
+as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
+FCM_correction<-as.numeric.factor(FCM_correction)
+
+Int_biomolecules$`Unsaturated lipids` <- Int_biomolecules$`Unsaturated lipids`*FCM_correction
+Int_biomolecules$Proteins <- Int_biomolecules$Proteins*FCM_correction
+Int_biomolecules$`Nucleic acids` <- Int_biomolecules$`Nucleic acids`*FCM_correction
+Int_biomolecules$Carotenoids <- Int_biomolecules$Carotenoids *FCM_correction
+  
+as.data.frame(melt(Int_biomolecules, id.vars="groups")) -> plot_boxplot
+
+weighed_other <- plot_boxplot %>%
+   mutate(groups=factor(groups, levels=c("AA t0","AA t3","AA t5","FA t0","FA t5","FA t10"))) %>%   
+ggplot(aes(x = groups, y= value, fill=groups))+
+   geom_boxplot()+
+    labs(x= expression(" "), y= "Intensity [A.U.] x cells/mL", title= "Other biomolecules")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),axis.text.x = element_text(angle = 90, size=15),
+panel.background = element_blank(), axis.line = element_line(), axis.title.y = element_text(size=15), axis.text.y = element_text(size=12),  legend.position = "none")  +
+  scale_fill_manual(values=colorCodes,labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+ facet_wrap(~variable, scales = "free_y")+
+  scale_y_continuous(labels=fancy_scientific)+
+  scale_x_discrete(labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+ 
+  ggpubr::stat_compare_means(comparisons = list(c("AA t0", "AA t3"),c("AA t0", "AA t5"), c("AA t5", "AA t3"),
+                     c("FA t0", "FA t5"),c("FA t0", "FA t10"),c("FA t5", "FA t10")),label = "p.signif", size= 4)
+
+
+```
+
+
+```{r boxplot amino acids, echo=FALSE}
+Int_His<- subset(df_AAFA, select=c("551", "655")) ##Our database is +2cm-1 so that is being considered
+Int_His <-rowSums(Int_His)
+#Int_Iso <-subset(df_AAFA, select=c("758"))
+#Int_Iso <-rowSums(Int_Iso)
+Int_Lys<-subset(df_AAFA, select=c("1184"))
+Int_Lys<- rowSums(Int_Lys)
+Int_Met<- subset(df_AAFA, select=c("1170", "1173"))
+Int_Met<- rowSums(Int_Met)
+Int_Phe<- subset(df_AAFA, select=c("1018", "1022"))
+Int_Phe<- rowSums(Int_Phe)
+#Int_Thr<- subset(df_AAFA, select=c("1549"))
+#Int_Thr<- rowSums(Int_Thr)
+Int_Trp<- subset(df_AAFA, select=c("766"))
+Int_Trp<- rowSums(Int_Trp)
+Int_Val<- subset(df_AAFA, select=c("1498"))
+Int_Val<- rowSums(Int_Val)
+Int_Cys<- subset(df_AAFA, select=c("514"))
+Int_Cys<- rowSums(Int_Cys)
+
+
+Int_aa <- cbind(Int_His,Int_Lys, Int_Met, Int_Phe, Int_Trp, Int_Val, Int_Cys)
+colnames(Int_aa)<-c("His", "Lys", "Met", "Phe",  "Trp", "Val", "Cys")
+Int_aa <- as.data.frame(Int_aa)
+Int_aa$groups<-groups_AAFA
+
+as.data.frame(melt(Int_aa, id.vars="groups")) -> plot_mean_peaks
+
+plot_mean_peaks$value <- as.numeric(plot_mean_peaks$value)
+my_comparisons <- list(c("AA t0", "AA t3"),c("AA t0", "AA t5"),c("AA t3", "AA t5"), 
+                       c("FA t0", "FA t3") ,c("FA t0", "FA t5"),c("FA t3", "FA t5"))
+
+singlecell_enrich <-plot_mean_peaks %>%
+   mutate(groups=factor(groups, levels=c("AA t0","AA t3","AA t5","FA t0","FA t5","FA t10"))) %>%  
+  ggplot(aes(x= groups, y=value, fill= groups))+
+   geom_boxplot()+
+    labs(x= expression(" "), y= "Intensity [A.U.]", title= "Amino acids")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(), axis.text.x = element_text(angle=90, size = 15), axis.title.y = element_text(size=15), axis.text.y = element_text(size=12), legend.position = "none")  +
+  scale_fill_manual(values=colorCodes,labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+
+  scale_x_discrete(labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+
+facet_wrap(~variable, scales = "free_y")+
+ scale_y_continuous(labels=fancy_scientific) + 
+  ggpubr::stat_compare_means(comparisons = list(c("AA t0", "AA t3"),c("AA t0", "AA t5"), c("AA t5", "AA t3"),
+                     c("FA t0", "FA t5"),c("FA t0", "FA t10"),c("FA t5", "FA t10")),label = "p.signif", size= 4)
+
+
+
+#Batch results
+FCM_correction_aa  <- as.factor(Int_aa$groups)
+FCM_correction_aa <- mapvalues(FCM_correction_aa, from = c("AA t0","AA t3","AA t5","FA t0","FA t5","FA t10"), to = c("76689932","106467678","227692851", "272282556", "223289230", "635870900"))#These are numbers from average_FCM$Total.cells
+
+as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
+FCM_correction_aa<-as.numeric.factor(FCM_correction_aa)
+
+Int_aa$His <- Int_aa$His*FCM_correction_aa
+Int_aa$Ile <- Int_aa$Ile*FCM_correction_aa
+Int_aa$Lys <- Int_aa$Lys*FCM_correction_aa
+Int_aa$Met <- Int_aa$Met *FCM_correction_aa
+Int_aa$Phe <- Int_aa$Phe *FCM_correction_aa
+Int_aa$Thr<- Int_aa$Thr *FCM_correction_aa
+Int_aa$Trp <- Int_aa$Trp *FCM_correction_aa
+Int_aa$Val <- Int_aa$Val *FCM_correction_aa
+Int_aa$Cys <- Int_aa$Cys *FCM_correction_aa
+
+as.data.frame(melt(Int_aa, id.vars="groups")) -> plot_mean_peaks
+
+plot_mean_peaks$value <- as.numeric(plot_mean_peaks$value)
+my_comparisons <- list(c("AA t0", "AA t3"),c("AA t0", "AA t5"),c("AA t3", "AA t5"), 
+                       c("FA t0", "FA t3") ,c("FA t0", "FA t5"),c("FA t3", "FA t5"))
+
+weighed_enrich <-plot_mean_peaks %>%
+   mutate(groups=factor(groups, levels=c("AA t0","AA t3","AA t5","FA t0","FA t5","FA t10"))) %>%  
+  ggplot(aes(x= groups, y=value, fill= groups))+
+   geom_boxplot()+
+    labs(x= expression(" "), y= "Intensity [A.U.] x cells/mL", title= "Amino acids")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(), axis.text.x = element_text(angle=90, size = 15), axis.title.y = element_text(size=15), axis.text.y = element_text(size=12), legend.position = "none")  +
+  scale_fill_manual(values=colorCodes,labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+
+  scale_x_discrete(labels = c("AA lag","AA log","AA stat","FA lag","FA log","FA stat"))+
+facet_wrap(~variable, scales = "free_y")+
+ scale_y_continuous(labels=fancy_scientific) + 
+  ggpubr::stat_compare_means(comparisons = list(c("AA t0", "AA t3"),c("AA t0", "AA t5"), c("AA t5", "AA t3"),
+                     c("FA t0", "FA t5"),c("FA t0", "FA t10"),c("FA t5", "FA t10")),label = "p.signif", size= 4)
+  
+  
+## Normality 
+
+shapiro.test(Int_aa$Trp) ## Some datapoints do not folow a normal distribution
+
+#Kruskal
+kruskal.test(value ~ groups, data = plot_mean_peaks) ##significant
+
+#pairwise correaltions wilcoxon
+pairwise.wilcox.test(Int_aa$His, Int_aa$groups)
+pairwise.wilcox.test(Int_aa$Lys, Int_aa$groups)
+pairwise.wilcox.test(Int_aa$Met, Int_aa$groups)
+pairwise.wilcox.test(Int_aa$Phe, Int_aa$groups)
+pairwise.wilcox.test(Int_aa$Trp, Int_aa$groups)
+pairwise.wilcox.test(Int_aa$Val, Int_aa$groups)
+pairwise.wilcox.test(Int_aa$Cys, Int_aa$groups)
+
+```
+

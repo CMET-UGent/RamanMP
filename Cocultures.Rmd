@@ -7,24 +7,643 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library("rJava")
+library("xlsxjars")
+library("xlsx")
+library("hyperSpec") # hyperSpec package
+library("baseline") # Contains all kinds of functions for baseline removal 
+library("e1071") # Functions for latent class analysis, short time Fourier transform, C-Fuzzy ... 
+library("devtools")
+library("unmixR") # VCA & N-FINDR
+library("plotrix")
+library("baselineWavelet")
+library("rgl")
+library("reshape2")
+library("MALDIquant")
+set.seed(777)
+
+```
+ 
+```{r preprocessing, include=FALSE}
+#### Basefolder and working directory ####  
+basefolder = "/media/projects2/CristinaGT/RamanMP/spc_cocultures/"
+filenames <- list.files(basefolder, pattern=".spc")
+
+##Rename
+#There are 3 groups (measured on different days) that need to be imported separatedly
+Strain<- unlist(lapply(strsplit(filenames,split="_"),function(x) (x[1])))
+
+spectra1<-read.spc(paste0(basefolder, filenames[1]))
+for (i in 1:67){
+  spc<- read.spc(paste0(basefolder, filenames[i]))
+  spectra1<-rbind(spectra1,spc)
+}
+
+spectra1 <- spc.loess (spectra1, c(seq (0, 3000)))
+
+spectra2<-read.spc(paste0(basefolder, filenames[68]))
+for (i in 69:202){
+  spc2<- read.spc(paste0(basefolder, filenames[i]))
+  spectra2<-rbind(spectra2,spc2)
+}
+spectra2 <- spc.loess (spectra2, c(seq (0, 3000)))
+
+spectra3<-read.spc(paste0(basefolder, filenames[203]))
+for (i in 204:length(filenames)){
+  spc3<- read.spc(paste0(basefolder, filenames[i]))
+  spectra3<-rbind(spectra3,spc3)
+}
+
+spectra3 <- spc.loess (spectra3, c(seq (0, 3000)))
+
+#spectra
+#spectra@label$filename <- filenames
+#plot(spectra, "spcprctl5")
+
+# # hyperspec --> maldiquant
+mass.spectra1<-list()
+for (i in 1:length(filenames)){
+  mass.spectrum1 <- createMassSpectrum(mass=spectra1@wavelength,
+                                      intensity=spectra1@data$spc[i,])
+  #metaData(mass.spectrum1) <- list(name="Cr")
+  mass.spectra1 <- c(mass.spectra1,mass.spectrum1)
+}
+
+mass.spectra2<-list()
+for (i in 1:length(spectra2)){
+  mass.spectrum2 <- createMassSpectrum(mass=spectra1@wavelength,
+                                       intensity=spectra2@data$spc[i,])
+  #metaData(mass.spectrum2) <- list(name="Cr")
+  mass.spectra2 <- c(mass.spectra2,mass.spectrum2)
+}
+  mass.spectra3<-list()
+  for (i in 1:length(spectra3)){
+    mass.spectrum3 <- createMassSpectrum(mass=spectra1@wavelength,
+                                         intensity=spectra3@data$spc[i,])
+    #metaData(mass.spectrum1) <- list(name="Cr")
+    mass.spectra3 <- c(mass.spectra3,mass.spectrum3)
+  }
+
+mass.spectra<-c(mass.spectra1,mass.spectra2,mass.spectra3)
+
+## TRIMMING
+# select the biologically relevant part of the fingerprint: 600 - 1800 cm-1 (for dueteriupm 400 - 3200 cm-1?)
+#I will use 250 to see Cr
+mq.trim <- trim(mass.spectra, range=c(370, 1800))
+
+wavelengths.trim <-  mass(mq.trim[[1]]) #333 (intervals are unequally distributed)
+
+#This chunk of code shows that the intervals between the different wavenumbers are not equal
+interval <- NULL
+name.interval <- NULL
+for (i in 1:length(wavelengths.trim)-1){
+  interval[i] <- wavelengths.trim[i+1]-wavelengths.trim[i]
+  name.interval[i] <- paste(round(wavelengths.trim[i], digits = 4),round(wavelengths.trim[i+1], digits=4), sep=" - ")
+}
+plot(interval, pch = 20, cex = 0.8, bty="l",main = "Interval between wavenumbers", ylab=expression("Size interval [cm"^-1*"]"),xlab=expression("Range wavenumbers [cm"^-1*"]"),xaxt="n")
+axis(at = c(1,332), side = 1, labels = c(name.interval[1],name.interval[322]),las = 0)
+
+
+# BASELINE CORRECTION
+# influence number of iterations?
+library(RColorBrewer)
+iteration.options <- c(5,10,20,30,40,50,100)
+colors <- brewer.pal(7, "Spectral")
+#dev.off()
+layout(rbind(1,2), heights=c(6,1))
+plot(mq.trim[[1]],main = "SNIP baseline correction: influence of iterations", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[1]])), max(intensity(mq.trim[[1]]))))
+for (i in 1:length(iteration.options)){
+  baseline <- estimateBaseline(mq.trim[[1]], method="SNIP",iterations=iteration.options[i])
+  lines(baseline,col=colors[i],lwd=2)
+}
+par(mar=c(0, 0, 0, 0))
+plot.new()
+legend('bottomleft','groups',legend = iteration.options, lwd=2, lty=c(1,1,1,1,1,1,1),col=colors, ncol=3, bty ="n")
+plot(mq.trim[[1]],main = "SNIP baseline correction: influence of iterations", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[1]])), max(intensity(mq.trim[[1]]))))
+for (i in 1:length(iteration.options)){
+  baseline <- estimateBaseline(mq.trim[[1]], method="SNIP",iterations=iteration.options[i])
+  lines(baseline,col=colors[i],lwd=2)
+}
+legend('bottomleft','groups',legend = iteration.options, lwd=1, lty=c(1,1,1,1,1,1,1),col=colors, ncol=3, bty ="o")
+
+
+# optimal number of iterations?
+number.of.iterations <- 10
+i <- 2
+dev.off()
+plot(mq.trim[[i]],main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[i]])), max(intensity(mq.trim[[i]]))))
+baseline <- estimateBaseline(mq.trim[[i]], method="SNIP",iterations=number.of.iterations)
+lines(baseline,col="blue",lwd=2)
+plot(mq.trim[[i]],main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[i]])), max(intensity(mq.trim[[i]]))))
+baseline <- estimateBaseline(mq.trim[[i]], method="SNIP",iterations=number.of.iterations)
+lines(baseline,col="blue",lwd=2)
+
+# correct all spectra
+mass.spectra.baseline.corr <- removeBaseline(mq.trim, method="SNIP",iterations=number.of.iterations)
+
+# plot a spectrum to see the effect
+plot(mass.spectra.baseline.corr[[1]], main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mass.spectra.baseline.corr[[i]])), max(intensity(mass.spectra.baseline.corr[[i]]))))
+
+
+# NORMALISATION:
+# surface = 1
+mq.norm <- calibrateIntensity(mass.spectra.baseline.corr, method="TIC",range=c(400, 1800))
+plot(mq.norm[[i]], main = "Normalisation", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mq.norm[[i]])), max(intensity(mq.norm[[i]]))))
+par(mfrow=c(2,1))
+plot(mq.norm[[1]], main = "Normalisation with peak", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mq.norm[[i]])), max(intensity(mq.norm[[i]]))))
+
+#Aligned spectra
+spectra_aligned <- alignSpectra(mq.norm ,tolerance=5, 
+                                halfWindowSize=1, reference =mq.norm[[5]])
+
+#### change MALDIquant (mq.norm) object in Hyperspec (hs.norm) object ####
+# get the intensity matrix from the mq.norm object
+
+matrix.spectra <- matrix(nrow=  length(mq.norm), ncol = length(wavelengths.trim))
+for (i in 1:length(mq.norm)){
+  matrix.spectra[i,] <- intensity(mq.norm[[i]])
+}
+
+hs.norm <- new ("hyperSpec", spc = matrix.spectra, wavelength = wavelengths.trim, labels= Strain)
+
+cell.name<-Strain
+
+#rownames(hs.norm) = make.names(cell.name, unique=TRUE)
+#rownames(hs.norm@data$spc) <- cell.name
+#rownames(hs.norm@data$spc) <- cell.name
+#colnames(hs.norm@data$spc) <- wavelengths.trim
+df <- as.data.frame(hs.norm@data$spc, col.names=hs.norm@wavelength , check.names=TRUE)
+names(df) <- make.names(names(df)) 
+
 ```
 
-## R Markdown
+```{r tSNE, include=FALSE}
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+colorCodes <-c("1+3"="steelblue"  , "1+4"="#D99E82",
+  "1+5"="#C3A869", "2+3"= "#A2B367", "2+4"="#77BA7F" , "2+5"= "#49BEA0" , 
+  "sample1"= "#3CBCC0","sample2"="#6BB4D8", "sample3"="#A0A7E2",
+  "sample4"="#C89BDB", "sample5"="#DF94C5")
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r cars}
-summary(cars)
+dist_ram_cells <- dist(hs.norm@data)
+tsne_ram.ramano <- tsne::tsne(dist_ram_cells)
+tsne_ram.ramano <- data.frame(tsne_ram.ramano, 
+                              Strain= Strain)
+
+                              #Treatment = do.call(rbind, base::strsplit("_", x = gsub("_1|_2|_3", "", df.Ramanone$group_1)))[, 1],
+                              #Timepoint = do.call(rbind, base::strsplit("_", x = gsub("_1|_2|_3", "", df.Ramanone$group_1)))[, 2])
+# Fix some bad group labels
+tsne_ram.ramano$Timepoint[tsne_ram.ramano$Timepoint == "5h"] <- "h5"
+tsne_ram.ramano$Timepoint <- factor(as.character(tsne_ram.ramano$Timepoint),
+                                    levels = c("min0", "min5", "min10", "min20", "min30", "min60","h3", "h5"))
+
+colnames(tsne_ram.ramano)[1:2] <- c("Axis1", "Axis2")
+
+library(pander)
+library(wesanderson)
+
+tsne_ram.ramano<-as.data.frame(tsne_ram.ramano)
+
+pdf("tsne_ramanome.pdf", height = 18, width =18)
+p_tsne_ram.c <- tsne_ram.ramano %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_manual(values = colorCodes,labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                          "HOB1", "HOB2", "het1", "het2", "het3")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = colorCodes)+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+  scale_fill_discrete(labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                               "HOB1", "HOB2", "het1", "het2", "het3"))
+
+print(p_tsne_ram.c)
+
+
+tsne_mixes<- subset.data.frame(tsne_ram.ramano,Strain=="1+3"
+                               |Strain=="1+4"|Strain=="1+5"|
+                                 Strain=="2+3"|Strain=="2+4"|Strain=="2+5")
+
+tsne_pure<- subset.data.frame(tsne_ram.ramano,Strain=="sample1"
+                              |Strain=="sample2"|Strain=="sample3"|
+                                Strain=="sample4"|Strain=="sample5")
+
+
+plot_tsne_mixes <- tsne_mixes %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  #ggplot2::scale_fill_brewer(palette = "Dark2",labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  ggplot2::scale_fill_manual(values = colorCodes,labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3"))+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+
+print(plot_tsne_mixes)
+
+plot_tsne_pure <- tsne_pure %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  #ggplot2::scale_fill_brewer(palette = "Set2", labels=c(  "HOB1", "HOB2", "het1", "het2", "het3")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  ggplot2::scale_fill_manual(values = colorCodes, labels=c(  "HOB1", "HOB2", "het1", "het2", "het3"))+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+print(plot_tsne_pure)
+
+
+
+tsne_23<- subset.data.frame(tsne_ram.ramano,Strain=="2+3"
+                            |Strain=="sample2"|Strain=="sample3")
+plot_tsne_23 <- tsne_23 %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_brewer(palette = "Set1", label= c("HOB2 + het1", "HOB2", "het1")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = "#ff6468","#EABE94","#0c775f","#367440","#ae3641","#823335")+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+
+tsne_24<- subset.data.frame(tsne_ram.ramano,Strain=="2+4"
+                            |Strain=="sample2"|Strain=="sample4")
+plot_tsne_24 <- tsne_24 %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_brewer(palette = "Set1", label= c("HOB2 + het2", "HOB2", "het2")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = "#ff6468","#EABE94","#0c775f","#367440","#ae3641","#823335")+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+tsne_25<- subset.data.frame(tsne_ram.ramano,Strain=="2+5"
+                            |Strain=="sample2"|Strain=="sample5")
+plot_tsne_25 <- tsne_25 %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_brewer(palette = "Set1", label= c("HOB2 + het3", "HOB2", "het3")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = "#ff6468","#EABE94","#0c775f","#367440","#ae3641","#823335")+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+
+
+tsne_13<- subset.data.frame(tsne_ram.ramano,Strain=="1+3"
+                            |Strain=="sample1"|Strain=="sample3")
+plot_tsne_13 <- tsne_13 %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_brewer(palette = "Set1", label= c("HOB1 + het1", "HOB1", "het1")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = "#ff6468","#EABE94","#0c775f","#367440","#ae3641","#823335")+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+
+tsne_14<- subset.data.frame(tsne_ram.ramano,Strain=="1+4"
+                            |Strain=="sample1"|Strain=="sample4")
+plot_tsne_14 <- tsne_14 %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_brewer(palette = "Set1", label= c("HOB1 + het2", "HOB1", "het2")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = "#ff6468","#EABE94","#0c775f","#367440","#ae3641","#823335")+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+
+tsne_15<- subset.data.frame(tsne_ram.ramano,Strain=="1+5"
+                            |Strain=="sample1"|Strain=="sample5")
+plot_tsne_15 <- tsne_15 %>% 
+  ggplot2::ggplot(ggplot2::aes(x = Axis1, y = Axis2, 
+                               fill = Strain)) + 
+  #facet_grid(Treatment~Timepoint)+
+  ggplot2::scale_fill_brewer(palette = "Set1", label= c("HOB1 + het3", "HOB1", "het3")) +
+  #ggplot2::scale_fill_manual(values = wesanderson::wes_palettes(n=3, name="GrandBudapest"))+
+  #ggplot2::scale_fill_manual(values = "#ff6468","#EABE94","#0c775f","#367440","#ae3641","#823335")+
+  ggplot2::geom_point(alpha = 0.7, 
+                      size = 4, colour = "black", shape = 21) + 
+  ggplot2::labs(x = paste0("Axis1"), y = paste0("Axis2"))+
+  theme_bw()+
+  theme(axis.title=element_text(size=16), strip.text=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2)),
+        legend.position = "top")
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+```{r boxplot amino acids, include=FALSE}
+d <- df
+## (-2 cm-1 cwith respect to Myrsini's)
+Int_His<- subset(d, select=c("553", "657"))
+Int_His <-rowSums(Int_His)
+Int_Iso <-subset(d, select=c("759"))
+Int_Iso <-rowSums(Int_Iso)
+Int_Lys<-subset(d, select=c("1184"))
+Int_Lys<- rowSums(Int_Lys)
+Int_Met<- subset(d, select=c("1169", "1173"))
+Int_Met<- rowSums(Int_Met)
+Int_Phe<- subset(d, select=c("1019", "1022"))
+Int_Phe<- rowSums(Int_Phe)
+Int_Thr<- subset(d, select=c("1551"))
+Int_Thr<- rowSums(Int_Thr)
+Int_Trp<- subset(d, select=c("767"))
+Int_Trp<- rowSums(Int_Trp)
+Int_Val<- subset(d, select=c("1500"))
+Int_Val<- rowSums(Int_Val)
+Int_Cys<- subset(d, select=c("516"))
+Int_Cys<- rowSums(Int_Cys)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+Int_aa <- cbind(Int_His,Int_Lys, Int_Met, Int_Phe, Int_Trp, Int_Val, Int_Cys)
+colnames(Int_aa)<-c("His", "Lys", "Met", "Phe", "Trp", "Val", "Cys")
+Int_aa <- as.data.frame(Int_aa)
+Int_aa$groups<-d$groups
+
+as.data.frame(reshape2::melt(Int_aa, id.vars="groups")) -> plot_mean_peaks
+
+plot_mean_peaks$value <- as.numeric(plot_mean_peaks$value)
+
+singlecell_aa <-  ggplot(data = plot_mean_peaks, aes(x = groups, y= as.numeric(value), fill=groups))+
+  geom_boxplot()+
+  labs(x= expression(" "), y= "Intensity [A.U.]", title= "Amino acids")+
+    
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+           panel.background = element_blank(), axis.line = element_line(), 
+        axis.text.x = element_text(size=12,colour = "black",angle = 90), axis.title.y = element_text(size=13),
+             axis.text.y = element_text(size=10), legend.position = "none")+
+    
+  scale_fill_manual(values=colorCodes,labels =  c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                  "HOB1", "HOB2", "het1", "het2", "het3"))+
+  
+  scale_y_continuous(labels=fancy_scientific)+
+  #theme(axis.text.x = element_text(angle = 90))+
+  scale_x_discrete(breaks=levels(plot_mean_peaks$groups), labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                                "HOB1", "HOB2", "het1", "het2", "het3"))  +
+  facet_wrap(~variable, scales = "free_y")  +
+  stat_compare_means(comparisons = list(c("1+3", "1+4"),c("1+3", "1+5"),c("1+4", "1+5"),
+                                        c("2+3", "2+4"),c("2+3", "2+5"),c("2+4", "2+5")),label = "p.signif", size= 4)
+
+
+
+#These lines are for batch results
+FCM_correction_aa  <- as.factor(Int_aa$groups)
+FCM_correction_aa <- plyr::mapvalues(FCM_correction_aa, from = c("1+3", "1+4","1+5","2+3","2+4","2+5","sample1","sample2"
+                                                           ,"sample3","sample4","sample5"), to =  c("3503547495","4863504925","3535548795", "4093190490", "19060325779", "14191031018",
+                                                                                                         "620599210","1370177759","1038105681","4856728990","1733205521"))#These are numbers from average_FCM$Total.cells
+
+as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
+FCM_correction_aa<-as.numeric.factor(FCM_correction_aa)
+
+Int_aa$His <- Int_aa$His*FCM_correction_aa
+Int_aa$Ile <- Int_aa$Ile*FCM_correction_aa
+Int_aa$Lys <- Int_aa$Lys*FCM_correction_aa
+Int_aa$Met <- Int_aa$Met *FCM_correction_aa
+Int_aa$Phe <- Int_aa$Phe *FCM_correction_aa
+Int_aa$Thr <- Int_aa$Thr *FCM_correction_aa
+Int_aa$Trp <- Int_aa$Trp *FCM_correction_aa
+Int_aa$Val <- Int_aa$Val *FCM_correction_aa
+Int_aa$Cys <- Int_aa$Cys *FCM_correction_aa
+
+
+Weighed_aa <-  ggplot(data = plot_mean_peaks, aes(x = groups, y= as.numeric(value), fill=groups))+
+  geom_boxplot()+
+  labs(x= expression(" "), y= "Intensity [A.U.] x cells/mL", title= "Amino acids")+
+    
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+           panel.background = element_blank(), axis.line = element_line(), 
+        axis.text.x = element_text(size=12,colour = "black",angle = 90), axis.title.y = element_text(size=13),
+             axis.text.y = element_text(size=10), legend.position = "none")+
+    
+  scale_fill_manual(values=colorCodes,labels =  c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                  "HOB1", "HOB2", "het1", "het2", "het3"))+
+  
+  scale_y_continuous(labels=fancy_scientific)+
+  #theme(axis.text.x = element_text(angle = 90))+
+  scale_x_discrete(breaks=levels(plot_mean_peaks$groups), labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                                "HOB1", "HOB2", "het1", "het2", "het3"))  +
+  facet_wrap(~variable, scales = "free_y")  +
+  stat_compare_means(comparisons = list(c("1+3", "1+4"),c("1+3", "1+5"),c("1+4", "1+5"),
+                                        c("2+3", "2+4"),c("2+3", "2+5"),c("2+4", "2+5")),label = "p.signif", size= 4)
+
+######
+
+## Normality 
+
+shapiro.test(Int_aa$His) ## Some datapoints do not folow a normal distribution
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r boxplot biomolecules, include=FALSE}
+## Teng 2016 propose unsat lipids 1658, Proteins 1002, Nucleic acids 1575/1481/812/783. I need to correct for around 6 cm-1
+Int_Lipids<- subset(d, select="1664")
+Int_Proteins <-subset(d, select=c("1011","1022")) ### Use our peaks here: 1015 and 1026
+#Int_Proteins <-subset(d, select=c("557","561","1184","1220","1500"))
+Int_Proteins <-rowSums(Int_Proteins)
+Int_Nucleic<-subset(d, select="1581")
+Int_Carotenoids<-subset(d, select="1454")
+
+Int_biomolecules <- cbind(Int_Lipids,Int_Proteins, Int_Nucleic, Int_Carotenoids)
+Int_biomolecules$groups<-d$groups
+colnames(Int_biomolecules)<-c("Lipids","Proteins", "Nucleic acids", "Carotenoids", "groups")
+
+Int_biomolecules <- as.data.frame(Int_biomolecules)
+
+as.data.frame(melt(Int_biomolecules, id.vars="groups")) -> plot_boxplot
+
+library(forecast)
+singlecell_bio <-plot_boxplot %>%
+  dplyr::mutate(groups=factor(groups)) %>%   
+  ggplot(aes(x = groups, y= as.numeric(value), fill=groups))+
+  geom_boxplot()+
+  labs(x= expression(" "), y= "Intensity [A.U.]", title= "Other biomolecules")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                                                                                               panel.background = element_blank(), axis.line = element_line(), axis.text.x = element_text(size=12,colour = "black"), axis.title.y = element_text(size=13),
+                                                                                               axis.text.y = element_text(size=10),legend.position = "none")+
+  scale_fill_manual(values=colorCodes,labels =  c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                  "HOB1", "HOB2", "het1", "het2", "het3"))+
+
+  scale_y_continuous(labels=fancy_scientific)+
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_x_discrete(breaks=levels(plot_boxplot$groups), labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                    "HOB1", "HOB2", "het1", "het2", "het3"))  +
+facet_wrap(~variable, nrow=2, ncol=2, scales = "free_y") + 
+  stat_compare_means(comparisons = list(c("1+3", "1+4"),c("1+3", "1+5"),c("1+4", "1+5"),
+                                        c("2+3", "2+4"),c("2+3", "2+5"),c("2+4", "2+5")),label = "p.signif", size= 4)
+
+
+
+#Add FCM names ##SKIP to get single-cell information
+FCM_correction  <- as.factor(Int_biomolecules$groups)
+
+library(plyr)
+FCM_correction <- mapvalues(FCM_correction, from = c("1+3", "1+4","1+5","2+3","2+4","2+5","sample1","sample2"
+                                                     ,"sample3","sample4","sample5"), 
+                            to = c("3503547495","4863504925","3535548795", "4093190490", "19060325779", "14191031018",
+                                   "620599210","1370177759","1038105681","4856728990","1733205521"))#These are numbers from average_FCM$Total.cells
+
+as.numeric.factor <- function(x) {as.numeric(levels(x))[x]}
+FCM_correction<-as.numeric.factor(FCM_correction)
+
+Int_biomolecules$Lipids <- Int_biomolecules$Lipids*FCM_correction
+Int_biomolecules$Proteins <- Int_biomolecules$Proteins*FCM_correction
+Int_biomolecules$`Nucleic acids` <- Int_biomolecules$`Nucleic acids`*FCM_correction
+Int_biomolecules$Carotenoids <- Int_biomolecules$Carotenoids*FCM_correction
+
+Weighed_bio <-plot_boxplot %>%
+  dplyr::mutate(groups=factor(groups)) %>%   
+  ggplot(aes(x = groups, y= as.numeric(value), fill=groups))+
+  geom_boxplot()+
+  labs(x= expression(" "), y= "Intensity [A.U.] x cells/mL", title= "Other biomolecules")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                                                                                               panel.background = element_blank(), axis.line = element_line(), axis.text.x = element_text(size=12,colour = "black"), axis.title.y = element_text(size=13),
+                                                                                               axis.text.y = element_text(size=10),legend.position = "none")+
+  scale_fill_manual(values=colorCodes,labels =  c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                  "HOB1", "HOB2", "het1", "het2", "het3"))+
+
+  scale_y_continuous(labels=fancy_scientific)+
+  theme(axis.text.x = element_text(angle = 90))+
+  scale_x_discrete(breaks=levels(plot_boxplot$groups), labels=c("HOB1 + het1", "HOB1 + het2", "HOB1 + het3", "HOB2 + het1", "HOB2 + het2", "HOB2 + het3",
+                                                    "HOB1", "HOB2", "het1", "het2", "het3"))  +
+facet_wrap(~variable, nrow=2, ncol=2, scales = "free_y") + 
+  stat_compare_means(comparisons = list(c("1+3", "1+4"),c("1+3", "1+5"),c("1+4", "1+5"),
+                                        c("2+3", "2+4"),c("2+3", "2+5"),c("2+4", "2+5")),label = "p.signif", size= 4)
+######
+## Normality 
+
+shapiro.test(Int_biomolecules$Lipids) ## Some datapoints do not folow a normal distribution
+```
+
+```{r contrast, include=FALSE}
+
+contrast_HOBs_h3 <- ram_contrast(hyprs = hs.norm, comp1 = "1+3", 
+                              comp2 = "2+3") 
+
+contrast_HOBs_h4 <- ram_contrast(hyprs = hs.norm, comp1 = "1+4", 
+                              comp2 = "2+4") 
+
+contrast_HOBs_h5 <- ram_contrast(hyprs = hs.norm, comp1 = "1+5", 
+                              comp2 = "2+5") 
+
+
+x = 0.07
+y= -0.15
+density_HOBs_h3 <- contrast_HOBs_h3 [which (contrast_HOBs_h3 $Density > x | contrast_HOBs_h3 $Density < y),]
+density_HOBs_h4 <- contrast_HOBs_h4 [which (contrast_HOBs_h4 $Density > x | contrast_HOBs_h4 $Density < y),]
+density_HOBs_h5 <- contrast_HOBs_h5 [which (contrast_HOBs_h5 $Density > x | contrast_HOBs_h5 $Density < y),]
+
+df.contrast_HOBs_h3 <- as.data.frame(contrast_HOBs_h3)
+df.contrast_HOBs_h4 <- as.data.frame(contrast_HOBs_h4)
+df.contrast_HOBs_h5 <- as.data.frame(contrast_HOBs_h5)
+
+ggplot(df.contrast_HOBs_h3, aes(x =Wavenumber, y= Density))+
+  geom_line()+
+  labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Effect of het3 in HOB1 vs HOB2")+
+  theme_bw()+
+  theme(text = element_text(size=15))+
+  scale_y_continuous(limits = c(-0.3, 0.5))+
+  geom_vline(xintercept=density_HOBs_h3$Wavenumber, color = "seagreen4", size=0.3,alpha=0.3)
+
+ggplot(df.contrast_HOBs_h4, aes(x =Wavenumber, y= Density))+
+  geom_line()+
+  labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Effect of het3 in HOB1 vs HOB2")+
+  theme_bw()+
+  theme(text = element_text(size=15))+
+  scale_y_continuous(limits = c(-0.3, 0.5))+
+  geom_vline(xintercept=density_HOBs_h4$Wavenumber, color = "seagreen4", size=0.3,alpha=0.3)
+
+ggplot(df.contrast_HOBs_h5, aes(x =Wavenumber, y= Density))+
+  geom_line()+
+  labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Effect of het3 in HOB1 vs HOB2")+
+  theme_bw()+
+  theme(text = element_text(size=15))+
+  scale_y_continuous(limits = c(-0.3, 0.5))+
+  geom_vline(xintercept=density_HOBs_h5$Wavenumber, color = "seagreen4", size=0.3,alpha=0.3)
+
+
+```
+
+```{r biomolecules, include=FALSE}
+df<-  hyperSpec::as.t.df(mean_pm_sd (hs.norm) )
+
+plot_df<-ggplot(df, aes (x = .wavelength))+
+  geom_ribbon (aes (ymin = `mean - sd`, ymax = `mean + sd`),
+               fill = "#00000030") +
+  geom_line (aes (y = mean))+
+  #ylim(0,0.05)+
+  ggplot2::labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Peaks for biomolecule estimation")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+                                                                                                                 panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+plot_df <- plot_df+ ggplot2::geom_vline(xintercept=1664,  #my spectra have a +4 shift compared to Teng 2016
+                                            color = "springgreen4", size=1)+ #lipids
+    geom_vline(xintercept=c(553, 657, 1184, 1169,1173,1019,1022, 1551,767, 1500, 516),   #aminoacids
+                          
+             color = "skyblue", size=1)+ 
+  geom_vline(xintercept=c(1011, 1022),  #proteins
+             color = "skyblue4", size=1)+ 
+  geom_vline(xintercept=1581,  #nucleic acids
+             color = "violetred3", size=1)+
+  geom_vline(xintercept=1454,   #carotenoids
+             color = "darkgoldenrod", size=1)
+  scale_y_continuous(limits=c(0,0.8)) 
+```
