@@ -1,0 +1,1893 @@
+---
+title: "Calibration"
+author: "CGT"
+date: "6/9/2020"
+output: html_document
+---
+
+```{r libraries, include=FALSE}
+
+
+library("Phenoflow")
+library("mclust")
+library("plyr")
+library("dplyr")
+library("gridExtra")
+library("tidyr")
+library("phyloseq")
+library("readr")
+library("ggplot2")
+library("gridExtra")
+library("fpc")
+library("RColorBrewer")
+library("vegan")
+library("tsne")
+library("sandwich")
+library("cluster")
+library("grid")
+library("egg")
+library("MALDIquant")
+library("hyperSpec")
+library("reshape2")
+library("caret") # for cross validation
+library("foreach") # for parallelization
+library("flowAI") # for denoising of FCM data
+library("NISTunits")
+library("dplyr")
+library("GGally")
+library("pls")
+
+
+```
+
+
+
+
+```{r preprocess, echo=FALSE}
+set.seed(777)
+basefolder <- "/media/projects2/CristinaGT/RamanMP/spc_calibration/"
+
+# DATA (spc files)
+filenames <- list.files(basefolder, pattern=".spc")
+cell.name <- filenames
+
+# read the first spectrum an order the wavelenghts with orderwl()
+hs <-orderwl(read.spc(paste0(basefolder, filenames[1])))
+
+# rbind to add spectra to data
+for(i in 2:length(filenames)) {
+  hs <- rbind(hs, orderwl(read.spc(paste0(basefolder, filenames[i]))))
+}
+
+#Spectra that are not OK (cosmoc rays or no signal)
+bad_spectra <- c(99,115,116,144,148,149,195,205,208,210,293,318,347,361,403,476:478,497,501,508,518,521,550,578,579,580,543,601,602:605,607,608,627,651,653,654:656,663,667:669,671,675,684,708,710,720,726:737,740:743,746,752,753,754,757,761,764,765,788,791,821,822,827,828,843,854,881,882,883,897,906,912,923,934,942,982,984,985,999,1000,1008,1009,1010,1013,1016,1042,1045,1051,1053,1071,1072,1077:1080,1087,1101,1102:1104,1120,1122,1134,1142,1147,1149,1154,1157,1177,1180,1180,1181,1191,1199,1209,1210,1216,1217,1235,1251,1256,1273,1274,1302,1304,1329,1364,1367,1381,1393,1403,1416,1423,1460,1482,1487,1492,1496,1515,1529,1526,1528,1546,1556,1567,1571:1573,1576,1579,1595,1613,1620,1624,1631,1632,1641,1644,1646,1652,1656,1662,1664,1666,1667,1671,1684:1686,1688,1699,1705,1710,1720,1721,1732,1734,1744,1745,1771,1774,1780,1790,1793,1800,1809,1819,1823,1828,1831,1834,1841,1842,1845,1867,1868,1874,1876,1879,1891,1897,1902,1904,1907,1909:1915,1927,1930,1932,1936,1938,1942,1943)
+
+hs<-hs[-bad_spectra]
+
+#### Rename spectra in R ####
+labels<-hs@data$filename
+
+Strain <- unlist(lapply(strsplit(labels,split="/"),function(x) (x[7])))
+Strain <- unlist(lapply(strsplit(Strain,split="_"),function(x) (x[1])))
+
+Strain<-mapvalues(Strain, from = c("y.lypolityca"), to = c("y.lipolytica"))
+
+filenames<-Strain
+hs@data$filename<- Strain
+
+cell.name<-filenames
+
+#Smooth
+#hs <- spc.loess (hs, c(seq (0, 3000)))
+plot (hs)
+
+
+# hyperspec --> maldiquant ##Or use function from Microraman package
+mq <- list()
+for (i in 1:length(filenames)){
+  mass.spectrum <- createMassSpectrum(mass=hs@wavelength, intensity=hs@data$spc[i,])
+  metaData(mass.spectrum) <- list(name=cell.name[i])
+  mq <- c(mq,mass.spectrum)
+}
+
+## TRIMMING
+# select the relevant part of the fingerprint:400-1800 and 2700-3050 cm-1 
+mq.trim <- trim(mq, range=c(400,1800))
+wavelengths.trim <-  mass(mq.trim[[1]]) #333 (intervals are unequally distributed)
+
+#wavelengths.trim<-wavelengths.trim[wavelengths.trim<1800 | wavelengths.trim>2700]
+
+#This chunk of code shows that the intervals between the different wavenumbers are not equal
+interval <- NULL
+name.interval <- NULL
+for (i in 1:length(wavelengths.trim)-1){
+  interval[i] <- wavelengths.trim[i+1]-wavelengths.trim[i]
+  name.interval[i] <- paste(round(wavelengths.trim[i], digits = 4),round(wavelengths.trim[i+1], digits=4), sep=" - ")
+}
+plot(interval, pch = 20, cex = 0.8, bty="l",main = "Interval between wavenumbers", ylab=expression("Size interval [cm"^-1*"]"),xlab=expression("Range wavenumbers [cm"^-1*"]"),xaxt="n")
+axis(at = c(1,332), side = 1, labels = c(name.interval[1],name.interval[322]),las = 0)
+
+
+# BASELINE CORRECTION
+# influence number of iterations?
+library(RColorBrewer)
+iteration.options <- c(5,10,20,30,40,50,100)
+colors <- brewer.pal(7, "Spectral")
+#dev.off()
+layout(rbind(1,2), heights=c(6,1))
+plot(mq.trim[[1]],main = "SNIP baseline correction: influence of iterations", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[1]])), max(intensity(mq.trim[[1]]))))
+for (i in 1:length(iteration.options)){
+  baseline <- estimateBaseline(mq.trim[[1]], method="SNIP",iterations=iteration.options[i])
+  lines(baseline,col=colors[i],lwd=2)
+}
+par(mar=c(0, 0, 0, 0))
+plot.new()
+legend('bottomleft','groups',legend = iteration.options, lwd=2, lty=c(1,1,1,1,1,1,1),col=colors, ncol=3, bty ="n")
+plot(mq.trim[[1]],main = "SNIP baseline correction: influence of iterations", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[1]])), max(intensity(mq.trim[[1]]))))
+for (i in 1:length(iteration.options)){
+  baseline <- estimateBaseline(mq.trim[[1]], method="SNIP",iterations=iteration.options[i])
+  lines(baseline,col=colors[i],lwd=2)
+}
+legend('bottomleft','groups',legend = iteration.options, lwd=1, lty=c(1,1,1,1,1,1,1),col=colors, ncol=3, bty ="o")
+
+
+# optimal number of iterations?
+number.of.iterations <- 10
+i <- 2
+dev.off()
+plot(mq.trim[[i]],main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[i]])), max(intensity(mq.trim[[i]]))))
+baseline <- estimateBaseline(mq.trim[[i]], method="SNIP",iterations=number.of.iterations)
+lines(baseline,col="blue",lwd=2)
+plot(mq.trim[[i]],main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")"), ylab="Intensity (AU)",ylim=c(min(intensity(mq.trim[[i]])), max(intensity(mq.trim[[i]]))))
+baseline <- estimateBaseline(mq.trim[[i]], method="SNIP",iterations=number.of.iterations)
+lines(baseline,col="blue",lwd=2)
+
+# correct all spectra
+mass.spectra.baseline.corr <- removeBaseline(mq.trim, method="SNIP",iterations=number.of.iterations)
+
+# plot a spectrum to see the effect
+plot(mass.spectra.baseline.corr[[1]], main = "SNIP baseline correction", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mass.spectra.baseline.corr[[i]])), max(intensity(mass.spectra.baseline.corr[[i]]))))
+
+
+# NORMALISATION:
+# surface = 1
+mq.norm <- calibrateIntensity(mass.spectra.baseline.corr, method="TIC")#,range=c(400, 3050))
+plot(mq.norm[[i]], main = "Normalisation", xlab=expression("Wavenumber (cm"^-1*")") , ylab="Intensity (AU)",ylim=c(min(intensity(mq.norm[[i]])), max(intensity(mq.norm[[i]]))))
+par(mfrow=c(2,1))
+
+#### change MALDIquant (mq.norm) object in Hyperspec (hs.norm) object ####
+matrix.spectra <- matrix(nrow=  length(mq.norm), ncol = length(wavelengths.trim))
+for (i in 1:length(mq.norm)){
+  matrix.spectra[i,] <- intensity(mq.norm[[i]])
+  }
+
+hs.norm <- new ("hyperSpec", spc = matrix.spectra, wavelength = round(wavelengths.trim), labels= cell.name)
+
+
+#Average measurements
+avgSpectra_prealign <- averageMassSpectra(mq.norm, labels=cell.name,method="mean")
+
+spectra_aligned <- alignSpectra(avgSpectra_prealign ,tolerance=5, 
+                        halfWindowSize=1, reference =avgSpectra_prealign[[1]])
+
+plot(spectra_aligned[[1]])
+
+avgSpectra<-spectra_aligned
+
+#Detect peaks
+peaks_strains <- detectPeaks(spectra_aligned , method="MAD", halfWindowSize=1, SNR=2)
+plot(spectra_aligned [[1]])
+points(peaks_strains[[1]], col="red", pch=4)
+
+##
+
+avgSpectra_scans_hs <- matrix(nrow=  length(avgSpectra), ncol = length(wavelengths.trim))
+for (i in 1:length(avgSpectra)){
+  avgSpectra_scans_hs[i,] <- intensity(avgSpectra[[i]])
+  }
+
+hs_scans_average <- new ("hyperSpec", spc = avgSpectra_scans_hs, wavelength = round(avgSpectra[[1]]@mass), labels= levels(as.factor(cell.name)))
+
+df_scans_average <- as.data.frame(hs_scans_average@data$spc, colnames=hs_scans_average@wavelength, rownames=levels(as.factor(cell.name)) , check.names=FALSE) 
+colnames(df_scans_average)<- round(avgSpectra[[1]]@mass)
+rownames(df_scans_average)<-levels(as.factor(cell.name))
+```
+
+
+
+
+```{r averagespectra, echo=FALSE}
+hsnorm.df_C = as.t.df (mean_pm_sd (subset(hs.norm, cell.name=="c.necator")))
+hsnorm.df_M = as.t.df (mean_pm_sd (subset(hs.norm, cell.name=="m.extorame")))
+hsnorm.df_P = as.t.df (mean_pm_sd (subset(hs.norm, cell.name=="p.pastons")))
+hsnorm.df_Y = as.t.df (mean_pm_sd (subset(hs.norm, cell.name=="y.lipolytica")))
+
+hsnorm.all <- as.t.df (mean_pm_sd (subset(hs.norm)))
+
+plot_C<-ggplot(hsnorm.df_C, aes (x = .wavelength))+
+  geom_ribbon (aes (ymin = `mean - sd`, ymax = `mean + sd`),
+               fill = "#00000030") +
+  geom_line (aes (y = mean))+
+  #ylim(0,0.05)+
+  ggplot2::labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "C. necator")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),    plot.title = element_text(face="italic") ,                                                                 panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+ggplot2::geom_vline(xintercept=c(555,659,770, 1188,1174,1177,770,1022,1026,1502,518),   #aminoacids
+             color = "skyblue", size=1)
+
+plot_M<-ggplot(hsnorm.df_M, aes (x = .wavelength))+
+  geom_ribbon (aes (ymin = `mean - sd`, ymax = `mean + sd`),
+               fill = "#00000030") +
+  geom_line (aes (y = mean))+
+  #ylim(0,0.05)+
+  ggplot2::labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "M. extorquens")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),    plot.title = element_text(face="italic") ,                                                                 panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+ggplot2::geom_vline(xintercept=c(555,659,770, 1188,1174,1177,770,1022,1026,1502,518),   #aminoacids
+             color = "skyblue", size=1)
+
+
+plot_P<-ggplot(hsnorm.df_P, aes (x = .wavelength))+
+  geom_ribbon (aes (ymin = `mean - sd`, ymax = `mean + sd`),
+               fill = "#00000030") +
+  geom_line (aes (y = mean))+
+  #ylim(0,0.05)+
+  ggplot2::labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "K. phaffii")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),    plot.title = element_text(face="italic") ,                                                                 panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+ggplot2::geom_vline(xintercept=c(555,659,770, 1188,1174,1177,1022,1026,1502,518),   #aminoacids
+             color = "skyblue", size=1)
+plot_Y<-ggplot(hsnorm.df_Y, aes (x = .wavelength))+
+  geom_ribbon (aes (ymin = `mean - sd`, ymax = `mean + sd`),
+               fill = "#00000030") +
+  geom_line (aes (y = mean))+
+  #ylim(0,0.05)+
+  ggplot2::labs(x= expression("Wavenumber [cm"^-1*"]"), y= "Intensity [A.U.]", title= "Y. lipolytica")+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),    plot.title = element_text(face="italic") ,                                                                 panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+ggplot2::geom_vline(xintercept=c(555,659,770, 1188,1174,1177,770,1022,1026,1502,518),   #aminoacids
+             color = "skyblue", size=1)
+
+ggpubr::ggarrange(plot_C, plot_M, plot_P, plot_Y, nrow=2, ncol =2)
+
+```
+
+
+
+
+```{r peaks single aa, echo=FALSE}
+#Phe
+# Use df_scans_average & eurofin Leu, Lys, Meth, Thr,Try,Val
+
+df_scans_average$Phe <- c(0.522,0.59,0.622,0.393)
+df_scans_average$His <- c(0.245,2.63,0.312,0.288)
+df_scans_average$Iso <- c(0.484,0.709,0.707,0.402)
+df_scans_average$Leu <- c(0.971,0.948,1.07,0.613)
+df_scans_average$Lys <- c(0.921,1.62,1.24,0.81)
+  df_scans_average$Met <- c(0.299,0.339,0.188,0.155)
+    df_scans_average$Thr <- c(0.616,0.764,0.819,0.484)
+      df_scans_average$Tyr <- c(0.396,0.499,0.495,0.315) ## Tyrosine
+        df_scans_average$Val <- c(0.774,0.82,0.811,0.497)
+        df_scans_average$Tryp <- c(0.216,0.131,0.208,0.14)
+        df_scans_average$Cys <- c(0.082,0.065,0.116,0.099) ##Cystein & cystine
+        df_scans_average$TotalProt <-c(rep(0.58515),rep(0.75595),rep(0.6432),rep(0.4319))
+
+df <- melt(df_scans_average ,  id.vars = 'Phe', variable.name = 'series')
+
+library(GGally)
+library("ggcorrplot")
+## The "other" dababase is the one we will use. Our Phe peak is at 1018 at their at 1005 cm-1, se we have a +13cm-1 shift
+
+corr_allpeaks<- df_scans_average[,1: length(colnames(df_scans_average))]
+
+corr<-round(cor(corr_allpeaks),1)
+ggcorrplot(corr,#p.mat = cor_pmat(corr_Phe),
+           type = "lower",
+           color = c("#FC4E07", "white", "#00AFBB"),
+           outline.col = "white", lab = TRUE)
+
+df_corr <- as.data.frame(corr)
+
+peaks_phe <- subset(df_corr, Phe > 0.2)
+Phe_corr <- rbind(rownames(peaks_phe),peaks_phe$Phe)
+
+peaks_his <- subset(df_corr, His > 0.95)
+His_corr <- rbind(rownames(peaks_his),peaks_his$His)
+
+peaks_thre <- subset(df_corr, Thr > 0.8)
+Thre_corr <- rbind(rownames(peaks_thre),peaks_thre$Thr)
+
+peaks_val<- subset(df_corr, Val > 0.65)
+Val_corr <- rbind(rownames(peaks_val),peaks_val$Val)
+
+peaks_met <- subset(df_corr, Met > 0.9)
+Met_corr <- rbind(rownames(peaks_met),peaks_met$Met)
+
+peaks_ile <- subset(df_corr, Iso > 0.6)
+Ile_corr <- rbind(rownames(peaks_ile),peaks_ile$Iso)
+
+peaks_leu <- subset(df_corr, Leu > 0.4)
+Leu_corr <- rbind(rownames(peaks_leu),peaks_leu$Leu)
+
+peaks_tryph <- subset(df_corr, Tryp > 0.85)
+Tryp_corr <- rbind(rownames(peaks_tryph),peaks_tryph$Tryp)
+
+peaks_lys <- subset(df_corr, Lys > 0.8)
+Lys_corr <- rbind(rownames(peaks_lys),peaks_lys$Lys)
+
+peaks_tyros <- subset(df_corr, Tyr > 0.6)
+Tyros_corr <- rbind(rownames(peaks_tyros),peaks_tyros$Tyr)
+
+peaks_cys <- subset(df_corr, Cys > 0.9)
+Cys_corr <- rbind(rownames(peaks_cys),peaks_cys$Cys)
+
+peaks_totalprot <- subset(df_corr, TotalProt > 0.8)
+Totalprot_corr <- rbind(rownames(peaks_totalprot),peaks_totalprot$TotalProt)
+
+
+
+```
+
+
+```{r peaks total protein, echo=FALSE}
+df_sc <- as.data.frame(hs.norm@data$spc, colnames=hs.norm@wavelength , check.names=FALSE) #,row.names = levels(as.factor(cell.name)))
+
+df_sc$TotalProt<-c(rep(0.58515,460),rep(0.75595,423),rep(0.6432,418),rep(0.4319,416))
+df_scans_average$TotalProt <-c(rep(0.58515),rep(0.75595),rep(0.6432),rep(0.4319))
+ 
+#Preotein Ramanone paper: 853, 1002, 1242, 1308cm−1, etc / 606, 992, 117, 11586, 2850, 3063 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3251995/
+#Our Phe peak is in ~1015
+
+ProteinPeaks <- c(150:170)
+Proline <- c(60:61,111:112,126:127,132:133,149:150,162:163,176:177,199:200,218,225:226,232:233,256:257,278:279,285:286,306:307)
+Benzene <- c(50:54,150:173,199:203)
+
+corr_Total<- df_scans_average[,c(ProteinPeaks,391)]
+corr_Total<- df_scans_average[,c(ProteinPeaks,382,393)]
+corr_Total<- df_scans_average[,c(Proline,393)]
+corr_Total<- df_scans_average[,c(Benzene,393)]
+ggcorr(corr_Total)
+```
+
+
+
+```{r rarefaction, echo=FALSE}
+set.seed(123)
+
+#### Phe 687 cm -1 (72) ####
+rar_Cnecator<-df_sc$`687`[1:460]
+
+rarPhe_average<-0
+rarPhe_sd<-0
+for (i in 1:length(rar_Cnecator)) {
+rarPhe_average[i] <- mean(rar_Cnecator[c(1: i)])
+rarPhe_sd[i] <- sd(rar_Cnecator[c(1: i)])
+}
+
+rar<-0
+rar$Phe <-0
+rar$Phe$average<-rarPhe_average
+rar$Phe$std<- rarPhe_sd
+rar$Phe$cells<- c(1:460)
+
+##fancy y axis
+fancy_scientific <- function(l) {
+     # turn in to character string in scientific notation
+     l <- format(l, scientific = TRUE)
+     # quote the part before the exponent to keep all the digits
+     l <- gsub("^(.*)e", "'\\1'e", l)
+     # turn the 'e+' into plotmath format
+     l <- gsub("e", "%*%10^", l)
+     # return this as an expression
+     parse(text=l)
+}
+
+rar<-as.data.frame(rar)
+
+Cnec_A<-ggplot(data=rar,aes(x=Phe.cells,y=Phe.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        axis.text.x = element_text(hjust=1), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "C. necator", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Phe.average-Phe.std, ymax=Phe.average+Phe.std), fill="blue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar$Phe.average[length(rar$Phe.average)],  
+                color = "slategrey", size=0.5)+ geom_hline(yintercept=rar$Phe.average[length(rar$Phe.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+## Now do this x1000 times shuffling the dataframe
+
+#### Phe ####
+set.seed(123)
+rar_Cnecator<-df_sc$`687`[1:460]
+rar_Cnecator<-as.data.frame(rar_Cnecator)
+
+rows<-0
+shuffle_Cnecator <-0
+tmp<-0
+rarPhe_average<- matrix(nrow=460,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Cnecator))
+shuffle_Cnecator <- rar_Cnecator[rows, ]
+
+for (y in 1:460) {
+tmp[y] <- mean(shuffle_Cnecator[c(1: y)])  
+}
+rarPhe_average[,i]<-tmp
+}
+dfPhe_average <-0
+dfPhe_sd <-0
+for (i in 1:460) {
+dfPhe_average[i] <- mean(rarPhe_average[c(1: i)])
+dfPhe_sd[i] <- sd(rarPhe_average[c(1: i)])
+}
+
+rar$Cnecator<-0
+rar$Cnecator$Phe<-0
+rar$Cnecator$Phe$average<-dfPhe_average
+rar$Cnecator$Phe$std<- dfPhe_sd
+rar$Cnecator$Phe$cells<- c(1:460)
+
+
+rar_Mextorame<-as.data.frame(df_sc$V72[461:883])
+
+rows<-0
+shuffle_Mextorame <-0
+tmp<-0
+rarPhe_average<- matrix(nrow=423,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Mextorame))
+shuffle_Mextorame <- rar_Mextorame[rows, ]
+
+for (y in 1:423) {
+tmp[y] <- mean(shuffle_Mextorame[c(1: y)])  
+}
+rarPhe_average[,i]<-tmp
+}
+dfPhe_average <-0
+dfPhe_sd <-0
+for (i in 1:423) {
+dfPhe_average[i] <- mean(rarPhe_average[c(1: i)])
+dfPhe_sd[i] <- sd(rarPhe_average[c(1: i)])
+}
+
+
+rar$Mextorame<-0
+rar$Mextorame$Phe<-0
+rar$Mextorame$Phe$average<-dfPhe_average
+rar$Mextorame$Phe$std<- dfPhe_sd
+rar$Mextorame$Phe$cells<- c(1:423)
+
+rar_Ppastons<-as.data.frame(df_sc$V72[884:1301])
+
+rows<-0
+shuffle_Ppastons <-0
+tmp<-0
+rarPhe_average<- matrix(nrow=418,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ppastons))
+shuffle_Ppastons <- rar_Ppastons[rows, ]
+
+for (y in 1:418) {
+tmp[y] <- mean(shuffle_Ppastons[c(1: y)])  
+}
+rarPhe_average[,i]<-tmp
+}
+dfPhe_average <-0
+dfPhe_sd <-0
+for (i in 1:418) {
+dfPhe_average[i] <- mean(rarPhe_average[c(1: i)])
+dfPhe_sd[i] <- sd(rarPhe_average[c(1: i)])
+}
+
+
+
+rar$Ppastons<-0
+rar$Ppastons$Phe<-0
+rar$Ppastons$Phe$average<-dfPhe_average
+rar$Ppastons$Phe$std<- dfPhe_sd
+rar$Ppastons$Phe$cells<- c(1:418)
+
+
+rar_Ylipolytica<-as.data.frame(df_sc$V72[1302:1717])
+rows<-0
+shuffle_Ylipolytica <-0
+tmp<-0
+rarPhe_average<- matrix(nrow=416,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ylipolytica))
+shuffle_Ylipolytica <- rar_Ylipolytica[rows, ]
+
+for (y in 1:416) {
+tmp[y] <- mean(shuffle_Ylipolytica[c(1: y)])  
+}
+rarPhe_average[,i]<-tmp
+}
+dfPhe_average <-0
+dfPhe_sd <-0
+for (i in 1:416) {
+dfPhe_average[i] <- mean(rarPhe_average[c(1: i)])
+dfPhe_sd[i] <- sd(rarPhe_average[c(1: i)])
+}
+
+rar$Ylipolytica<-0
+rar$Ylipolytica$Phe<-0
+rar$Ylipolytica$Phe$average<-dfPhe_average
+rar$Ylipolytica$Phe$std<- dfPhe_sd
+rar$Ylipolytica$Phe$cells<- c(1:416)
+
+rar_A<-as.data.frame(rar$Cnecator)
+rar_A<-rar_A[-1,] #Take out the first point
+
+p_rarA<-ggplot(data=rar_A,aes(x=Phe.cells,y=Phe.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "C. necator", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Phe.average-Phe.std, ymax=Phe.average+Phe.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_A$Phe.average[length(rar_A$Phe.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$Phe.average[length(rar_A$Phe.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$Phe.average[length(rar_A$Phe.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_B<-as.data.frame(rar$Mextorame)
+rar_B<-rar_B[-1,] #Take out the first point
+
+p_rarB<-ggplot(data=rar_B,aes(x=Phe.cells,y=Phe.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "M. extorquens", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Phe.average-Phe.std, ymax=Phe.average+Phe.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_B$Phe.average[length(rar_B$Phe.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$Phe.average[length(rar_B$Phe.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$Phe.average[length(rar_B$Phe.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_C<-as.data.frame(rar$Ppastons)
+rar_C<-rar_C[-1,] #Take out the first point
+
+p_rarC<-ggplot(data=rar_C,aes(x=Phe.cells,y=Phe.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "K. phaffii", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Phe.average-Phe.std, ymax=Phe.average+Phe.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_C$Phe.average[length(rar_C$Phe.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$Phe.average[length(rar_C$Phe.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$Phe.average[length(rar_C$Phe.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_D<-as.data.frame(rar$Ylipolytica)
+rar_D<-rar_D[-1,] #Take out the first point
+
+p_rarD<-ggplot(data=rar_D,aes(x=Phe.cells,y=Phe.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "Y. lipolytica", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Phe.average-Phe.std, ymax=Phe.average+Phe.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_D$Phe.average[length(rar_D$Phe.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$Phe.average[length(rar_D$Phe.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$Phe.average[length(rar_D$Phe.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+#p_rarD<-p_rarD+  geom_text(aes(420,rar_D$Phe.average[length(rar_D$Phe.average)],label = #"mean", vjust = +1),colour= "slategrey") #geom_text(aes(420,rar_D$Phe.average[length(rar_D$Phe.average)],label = "0.95", vjust = -1),colour= "slategrey")
+
+library(ggpubr)
+Phe_rar_all<- ggarrange(p_rarA, p_rarB, p_rarC, p_rarD, ncol = 2,nrow = 2, labels = c("A", "B", "C", "D"))
+
+annotate_figure(Phe_rar_all,
+          left = text_grob("Intensity Phe peak (687 cm-1)", rot = 90),
+          bottom= text_grob("Cells measured"))
+
+#### His ####
+rar_Cnecator<-df_sc$V64[1:460]
+rar_Cnecator<-as.data.frame(rar_Cnecator)
+
+rows<-0
+shuffle_Cnecator <-0
+tmp<-0
+rarHis_average<- matrix(nrow=460,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Cnecator))
+shuffle_Cnecator <- rar_Cnecator[rows, ]
+
+for (y in 1:460) {
+tmp[y] <- mean(shuffle_Cnecator[c(1: y)])  
+}
+rarHis_average[,i]<-tmp
+}
+dfHis_average <-0
+dfHis_sd <-0
+for (i in 1:460) {
+dfHis_average[i] <- mean(rarHis_average[c(1: i)])
+dfHis_sd[i] <- sd(rarHis_average[c(1: i)])
+}
+
+rar$Cnecator<-0
+rar$Cnecator$His<-0
+rar$Cnecator$His$average<-dfHis_average
+rar$Cnecator$His$std<- dfHis_sd
+rar$Cnecator$His$cells<- c(1:460)
+
+
+rar_Mextorame<-as.data.frame(df_sc$V64[461:883])
+
+rows<-0
+shuffle_Mextorame <-0
+tmp<-0
+rarHis_average<- matrix(nrow=423,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Mextorame))
+shuffle_Mextorame <- rar_Mextorame[rows, ]
+
+for (y in 1:423) {
+tmp[y] <- mean(shuffle_Mextorame[c(1: y)])  
+}
+rarHis_average[,i]<-tmp
+}
+dfHis_average <-0
+dfHis_sd <-0
+for (i in 1:423) {
+dfHis_average[i] <- mean(rarHis_average[c(1: i)])
+dfHis_sd[i] <- sd(rarHis_average[c(1: i)])
+}
+
+
+rar$Mextorame<-0
+rar$Mextorame$His<-0
+rar$Mextorame$His$average<-dfHis_average
+rar$Mextorame$His$std<- dfHis_sd
+rar$Mextorame$His$cells<- c(1:423)
+
+rar_Ppastons<-as.data.frame(df_sc$V64[884:1301])
+
+rows<-0
+shuffle_Ppastons <-0
+tmp<-0
+rarHis_average<- matrix(nrow=418,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ppastons))
+shuffle_Ppastons <- rar_Ppastons[rows, ]
+
+for (y in 1:418) {
+tmp[y] <- mean(shuffle_Ppastons[c(1: y)])  
+}
+rarHis_average[,i]<-tmp
+}
+dfHis_average <-0
+dfHis_sd <-0
+for (i in 1:418) {
+dfHis_average[i] <- mean(rarHis_average[c(1: i)])
+dfHis_sd[i] <- sd(rarHis_average[c(1: i)])
+}
+
+
+
+rar$Ppastons<-0
+rar$Ppastons$His<-0
+rar$Ppastons$His$average<-dfHis_average
+rar$Ppastons$His$std<- dfHis_sd
+rar$Ppastons$His$cells<- c(1:418)
+
+
+rar_Ylipolytica<-as.data.frame(df_sc$V64[1302:1717])
+rows<-0
+shuffle_Ylipolytica <-0
+tmp<-0
+rarHis_average<- matrix(nrow=416,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ylipolytica))
+shuffle_Ylipolytica <- rar_Ylipolytica[rows, ]
+
+for (y in 1:416) {
+tmp[y] <- mean(shuffle_Ylipolytica[c(1: y)])  
+}
+rarHis_average[,i]<-tmp
+}
+dfHis_average <-0
+dfHis_sd <-0
+for (i in 1:416) {
+dfHis_average[i] <- mean(rarHis_average[c(1: i)])
+dfHis_sd[i] <- sd(rarHis_average[c(1: i)])
+}
+
+
+
+rar$Ylipolytica<-0
+rar$Ylipolytica$His<-0
+rar$Ylipolytica$His$average<-dfHis_average
+rar$Ylipolytica$His$std<- dfHis_sd
+rar$Ylipolytica$His$cells<- c(1:416)
+
+# rar$His <-0
+# rar$His$average<-dfHis_average
+# rar$His$std<- dfHis_sd
+# rar$His$cells<- c(1:460)
+
+rar_A<-as.data.frame(rar$Cnecator)
+rar_A<-rar_A[-1,] #Take out the first point
+
+p_rarA<-ggplot(data=rar_A,aes(x=His.cells,y=His.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "C. necator", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=His.average-His.std, ymax=His.average+His.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_A$His.average[length(rar_A$His.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$His.average[length(rar_A$His.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$His.average[length(rar_A$His.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_B<-as.data.frame(rar$Mextorame)
+rar_B<-rar_B[-1,] #Take out the first point
+
+p_rarB<-ggplot(data=rar_B,aes(x=His.cells,y=His.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "M. extorquens", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=His.average-His.std, ymax=His.average+His.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_B$His.average[length(rar_B$His.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$His.average[length(rar_B$His.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$His.average[length(rar_B$His.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_C<-as.data.frame(rar$Ppastons)
+rar_C<-rar_C[-1,] #Take out the first point
+
+p_rarC<-ggplot(data=rar_C,aes(x=His.cells,y=His.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "K. phaffii", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=His.average-His.std, ymax=His.average+His.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_C$His.average[length(rar_C$His.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$His.average[length(rar_C$His.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$His.average[length(rar_C$His.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_D<-as.data.frame(rar$Ylipolytica)
+rar_D<-rar_D[-1,] #Take out the first point
+
+p_rarD<-ggplot(data=rar_D,aes(x=His.cells,y=His.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "Y. lipolytica", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=His.average-His.std, ymax=His.average+His.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_D$His.average[length(rar_D$His.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$His.average[length(rar_D$His.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$His.average[length(rar_D$His.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+#p_rarD<-p_rarD+  geom_text(aes(420,rar_D$His.average[length(rar_D$His.average)],label = #"mean", vjust = +1),colour= "slategrey") #geom_text(aes(420,rar_D$His.average[length(rar_D$His.average)],label = "0.95", vjust = -1),colour= "slategrey")
+
+library(ggpubr)
+His_rar_all<- ggarrange(p_rarA, p_rarB, p_rarC, p_rarD, ncol = 2,nrow = 2, labels = c("A", "B", "C", "D"))
+
+annotate_figure(His_rar_all,
+          left = text_grob("Intensity His peak (659 cm-1)", rot = 90),
+          bottom= text_grob("Cells measured"))
+
+#### Lys ####
+rar_Cnecator<-df_sc$V198[1:460]
+rar_Cnecator<-as.data.frame(rar_Cnecator)
+
+rows<-0
+shuffle_Cnecator <-0
+tmp<-0
+rarLys_average<- matrix(nrow=460,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Cnecator))
+shuffle_Cnecator <- rar_Cnecator[rows, ]
+
+for (y in 1:460) {
+tmp[y] <- mean(shuffle_Cnecator[c(1: y)])  
+}
+rarLys_average[,i]<-tmp
+}
+dfLys_average <-0
+dfLys_sd <-0
+for (i in 1:460) {
+dfLys_average[i] <- mean(rarLys_average[c(1: i)])
+dfLys_sd[i] <- sd(rarLys_average[c(1: i)])
+}
+
+rar$Cnecator<-0
+rar$Cnecator$Lys<-0
+rar$Cnecator$Lys$average<-dfLys_average
+rar$Cnecator$Lys$std<- dfLys_sd
+rar$Cnecator$Lys$cells<- c(1:460)
+
+
+rar_Mextorame<-as.data.frame(df_sc$V198[461:883])
+
+rows<-0
+shuffle_Mextorame <-0
+tmp<-0
+rarLys_average<- matrix(nrow=423,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Mextorame))
+shuffle_Mextorame <- rar_Mextorame[rows, ]
+
+for (y in 1:423) {
+tmp[y] <- mean(shuffle_Mextorame[c(1: y)])  
+}
+rarLys_average[,i]<-tmp
+}
+dfLys_average <-0
+dfLys_sd <-0
+for (i in 1:423) {
+dfLys_average[i] <- mean(rarLys_average[c(1: i)])
+dfLys_sd[i] <- sd(rarLys_average[c(1: i)])
+}
+
+
+rar$Mextorame<-0
+rar$Mextorame$Lys<-0
+rar$Mextorame$Lys$average<-dfLys_average
+rar$Mextorame$Lys$std<- dfLys_sd
+rar$Mextorame$Lys$cells<- c(1:423)
+
+rar_Ppastons<-as.data.frame(df_sc$V198[884:1301])
+
+rows<-0
+shuffle_Ppastons <-0
+tmp<-0
+rarLys_average<- matrix(nrow=418,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ppastons))
+shuffle_Ppastons <- rar_Ppastons[rows, ]
+
+for (y in 1:418) {
+tmp[y] <- mean(shuffle_Ppastons[c(1: y)])  
+}
+rarLys_average[,i]<-tmp
+}
+dfLys_average <-0
+dfLys_sd <-0
+for (i in 1:418) {
+dfLys_average[i] <- mean(rarLys_average[c(1: i)])
+dfLys_sd[i] <- sd(rarLys_average[c(1: i)])
+}
+
+
+
+rar$Ppastons<-0
+rar$Ppastons$Lys<-0
+rar$Ppastons$Lys$average<-dfLys_average
+rar$Ppastons$Lys$std<- dfLys_sd
+rar$Ppastons$Lys$cells<- c(1:418)
+
+
+rar_Ylipolytica<-as.data.frame(df_sc$V198[1302:1717])
+rows<-0
+shuffle_Ylipolytica <-0
+tmp<-0
+rarLys_average<- matrix(nrow=416,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ylipolytica))
+shuffle_Ylipolytica <- rar_Ylipolytica[rows, ]
+
+for (y in 1:416) {
+tmp[y] <- mean(shuffle_Ylipolytica[c(1: y)])  
+}
+rarLys_average[,i]<-tmp
+}
+dfLys_average <-0
+dfLys_sd <-0
+for (i in 1:416) {
+dfLys_average[i] <- mean(rarLys_average[c(1: i)])
+dfLys_sd[i] <- sd(rarLys_average[c(1: i)])
+}
+
+
+
+rar$Ylipolytica<-0
+rar$Ylipolytica$Lys<-0
+rar$Ylipolytica$Lys$average<-dfLys_average
+rar$Ylipolytica$Lys$std<- dfLys_sd
+rar$Ylipolytica$Lys$cells<- c(1:416)
+
+# rar$Lys <-0
+# rar$Lys$average<-dfLys_average
+# rar$Lys$std<- dfLys_sd
+# rar$Lys$cells<- c(1:460)
+
+rar_A<-as.data.frame(rar$Cnecator)
+rar_A<-rar_A[-1,] #Take out the first point
+
+p_rarA<-ggplot(data=rar_A,aes(x=Lys.cells,y=Lys.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "C. necator", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Lys.average-Lys.std, ymax=Lys.average+Lys.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_A$Lys.average[length(rar_A$Lys.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$Lys.average[length(rar_A$Lys.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$Lys.average[length(rar_A$Lys.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_B<-as.data.frame(rar$Mextorame)
+rar_B<-rar_B[-1,] #Take out the first point
+
+p_rarB<-ggplot(data=rar_B,aes(x=Lys.cells,y=Lys.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "M. extorquens", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Lys.average-Lys.std, ymax=Lys.average+Lys.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_B$Lys.average[length(rar_B$Lys.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$Lys.average[length(rar_B$Lys.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$Lys.average[length(rar_B$Lys.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_C<-as.data.frame(rar$Ppastons)
+rar_C<-rar_C[-1,] #Take out the first point
+
+p_rarC<-ggplot(data=rar_C,aes(x=Lys.cells,y=Lys.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "K. phaffii", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Lys.average-Lys.std, ymax=Lys.average+Lys.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_C$Lys.average[length(rar_C$Lys.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$Lys.average[length(rar_C$Lys.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$Lys.average[length(rar_C$Lys.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_D<-as.data.frame(rar$Ylipolytica)
+rar_D<-rar_D[-1,] #Take out the first point
+
+p_rarD<-ggplot(data=rar_D,aes(x=Lys.cells,y=Lys.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "Y. lipolytica", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Lys.average-Lys.std, ymax=Lys.average+Lys.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_D$Lys.average[length(rar_D$Lys.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$Lys.average[length(rar_D$Lys.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$Lys.average[length(rar_D$Lys.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+#p_rarD<-p_rarD+  geom_text(aes(420,rar_D$Lys.average[length(rar_D$Lys.average)],label = #"mean", vjust = +1),colour= "slategrey") #geom_text(aes(420,rar_D$Lys.average[length(rar_D$Lys.average)],label = "0.95", vjust = -1),colour= "slategrey")
+
+library(ggpubr)
+Lys_rar_all<- ggarrange(p_rarA, p_rarB, p_rarC, p_rarD, ncol = 2,nrow = 2, labels = c("A", "B", "C", "D"))
+
+annotate_figure(Lys_rar_all,
+          left = text_grob("Intensity Lys peak (1170 cm-1)", rot = 90),
+          bottom= text_grob("Cells measured"))
+
+
+#### Met ####
+rar_Cnecator<-df_sc$V200[1:460]
+rar_Cnecator<-as.data.frame(rar_Cnecator)
+
+rows<-0
+shuffle_Cnecator <-0
+tmp<-0
+rarMet_average<- matrix(nrow=460,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Cnecator))
+shuffle_Cnecator <- rar_Cnecator[rows, ]
+
+for (y in 1:460) {
+tmp[y] <- mean(shuffle_Cnecator[c(1: y)])  
+}
+rarMet_average[,i]<-tmp
+}
+dfMet_average <-0
+dfMet_sd <-0
+for (i in 1:460) {
+dfMet_average[i] <- mean(rarMet_average[c(1: i)])
+dfMet_sd[i] <- sd(rarMet_average[c(1: i)])
+}
+
+rar$Cnecator<-0
+rar$Cnecator$Met<-0
+rar$Cnecator$Met$average<-dfMet_average
+rar$Cnecator$Met$std<- dfMet_sd
+rar$Cnecator$Met$cells<- c(1:460)
+
+
+rar_Mextorame<-as.data.frame(df_sc$V200[461:883])
+
+rows<-0
+shuffle_Mextorame <-0
+tmp<-0
+rarMet_average<- matrix(nrow=423,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Mextorame))
+shuffle_Mextorame <- rar_Mextorame[rows, ]
+
+for (y in 1:423) {
+tmp[y] <- mean(shuffle_Mextorame[c(1: y)])  
+}
+rarMet_average[,i]<-tmp
+}
+dfMet_average <-0
+dfMet_sd <-0
+for (i in 1:423) {
+dfMet_average[i] <- mean(rarMet_average[c(1: i)])
+dfMet_sd[i] <- sd(rarMet_average[c(1: i)])
+}
+
+
+rar$Mextorame<-0
+rar$Mextorame$Met<-0
+rar$Mextorame$Met$average<-dfMet_average
+rar$Mextorame$Met$std<- dfMet_sd
+rar$Mextorame$Met$cells<- c(1:423)
+
+rar_Ppastons<-as.data.frame(df_sc$V200[884:1301])
+
+rows<-0
+shuffle_Ppastons <-0
+tmp<-0
+rarMet_average<- matrix(nrow=418,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ppastons))
+shuffle_Ppastons <- rar_Ppastons[rows, ]
+
+for (y in 1:418) {
+tmp[y] <- mean(shuffle_Ppastons[c(1: y)])  
+}
+rarMet_average[,i]<-tmp
+}
+dfMet_average <-0
+dfMet_sd <-0
+for (i in 1:418) {
+dfMet_average[i] <- mean(rarMet_average[c(1: i)])
+dfMet_sd[i] <- sd(rarMet_average[c(1: i)])
+}
+
+
+
+rar$Ppastons<-0
+rar$Ppastons$Met<-0
+rar$Ppastons$Met$average<-dfMet_average
+rar$Ppastons$Met$std<- dfMet_sd
+rar$Ppastons$Met$cells<- c(1:418)
+
+
+rar_Ylipolytica<-as.data.frame(df_sc$V200[1302:1717])
+rows<-0
+shuffle_Ylipolytica <-0
+tmp<-0
+rarMet_average<- matrix(nrow=416,ncol=1000)
+
+for (i in 1:1000) {
+rows <- sample(nrow(rar_Ylipolytica))
+shuffle_Ylipolytica <- rar_Ylipolytica[rows, ]
+
+for (y in 1:416) {
+tmp[y] <- mean(shuffle_Ylipolytica[c(1: y)])  
+}
+rarMet_average[,i]<-tmp
+}
+dfMet_average <-0
+dfMet_sd <-0
+for (i in 1:416) {
+dfMet_average[i] <- mean(rarMet_average[c(1: i)])
+dfMet_sd[i] <- sd(rarMet_average[c(1: i)])
+}
+
+
+
+rar$Ylipolytica<-0
+rar$Ylipolytica$Met<-0
+rar$Ylipolytica$Met$average<-dfMet_average
+rar$Ylipolytica$Met$std<- dfMet_sd
+rar$Ylipolytica$Met$cells<- c(1:416)
+
+# rar$Met <-0
+# rar$Met$average<-dfMet_average
+# rar$Met$std<- dfMet_sd
+# rar$Met$cells<- c(1:460)
+
+rar_A<-as.data.frame(rar$Cnecator)
+rar_A<-rar_A[-1,] #Take out the first point
+
+p_rarA<-ggplot(data=rar_A,aes(x=Met.cells,y=Met.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "C. necator", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Met.average-Met.std, ymax=Met.average+Met.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_A$Met.average[length(rar_A$Met.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$Met.average[length(rar_A$Met.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_A$Met.average[length(rar_A$Met.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_B<-as.data.frame(rar$Mextorame)
+rar_B<-rar_B[-1,] #Take out the first point
+
+p_rarB<-ggplot(data=rar_B,aes(x=Met.cells,y=Met.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "M. extorquens", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Met.average-Met.std, ymax=Met.average+Met.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_B$Met.average[length(rar_B$Met.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$Met.average[length(rar_B$Met.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_B$Met.average[length(rar_B$Met.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_C<-as.data.frame(rar$Ppastons)
+rar_C<-rar_C[-1,] #Take out the first point
+
+p_rarC<-ggplot(data=rar_C,aes(x=Met.cells,y=Met.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "K. phaffii", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Met.average-Met.std, ymax=Met.average+Met.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_C$Met.average[length(rar_C$Met.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$Met.average[length(rar_C$Met.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_C$Met.average[length(rar_C$Met.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+rar_D<-as.data.frame(rar$Ylipolytica)
+rar_D<-rar_D[-1,] #Take out the first point
+
+p_rarD<-ggplot(data=rar_D,aes(x=Met.cells,y=Met.average))+
+       geom_line()+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(face = "bold.italic"))+
+  labs(title= "Y. lipolytica", x=" ", y=" ")+
+   geom_ribbon(aes(ymin=Met.average-Met.std, ymax=Met.average+Met.std), fill="skyblue", alpha=0.2)+
+   scale_y_continuous(labels=fancy_scientific)+ geom_hline(yintercept=rar_D$Met.average[length(rar_D$Met.average)],  
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$Met.average[length(rar_D$Met.average)]*0.95, linetype="dashed", 
+                color = "slategrey", size=0.5)+
+geom_hline(yintercept=rar_D$Met.average[length(rar_D$Met.average)]*1.05, linetype="dashed", 
+                color = "slategrey", size=0.5)
+
+#p_rarD<-p_rarD+  geom_text(aes(420,rar_D$Met.average[length(rar_D$Met.average)],label = #"mean", vjust = +1),colour= "slategrey") #geom_text(aes(420,rar_D$Met.average[length(rar_D$Met.average)],label = "0.95", vjust = -1),colour= "slategrey")
+
+library(ggpubr)
+Met_rar_all<- ggarrange(p_rarA, p_rarB, p_rarC, p_rarD, ncol = 2,nrow = 2, labels = c("A", "B", "C", "D"))
+
+annotate_figure(Met_rar_all,
+          left = text_grob("Intensity Met peak (1177 cm-1)", rot = 90),
+          bottom= text_grob("Cells measured"))
+
+```
+
+```{r correlations, echo=FALSE}
+library ("ggpubr")
+#### Phe ####
+colnames(df_scans_average)[71]<- "X687"
+df_scans_average$X687X1026<- df_scans_average$X687 + df_scans_average$`1026`
+
+df_scans_average$X687X1026X1022<- df_scans_average$X687 + df_scans_average$`1026` + df_scans_average$`1022`
+
+sp_Phe <- ggscatter(df_scans_average, x = "X687X1026X1022", y ="Phe",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Phe<-sp_Phe+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Phe", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### His ####
+colnames(df_scans_average)[64]<- "X659"
+
+sp_His <- ggscatter(df_scans_average, x = X659, y ="His",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_His<-sp_His+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "His", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Ile ####
+colnames(df_scans_average)[107]<- "X828"
+df_scans_average$X828X1188X675<- df_scans_average$X828 + df_scans_average$`1188` +df_scans_average$`675`  +df_scans_average$`824`+ df_scans_average$`766`+ df_scans_average$`559`
+
+
+sp_Iso<- ggscatter(df_scans_average, x = "X828X1188X675", y ="Iso",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Iso<-sp_Iso+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Ile", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Leu ####
+colnames(df_scans_average)[92]<- "X770"
+df_scans_average$X770X1026X671<- df_scans_average$X770 + df_scans_average$"1026" +df_scans_average$`671`
+
+sp_Leu <- ggscatter(df_scans_average, x = "X770X1026X671", y ="Leu",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Leu<-sp_Leu+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Leu", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Lys ####
+colnames(df_scans_average)[198]<- "X1170"
+df_scans_average$X1170X627X1166<- df_scans_average$X770 + df_scans_average$`1166` +df_scans_average$`627`
+
+sp_Lys <- ggscatter(df_scans_average, x = "X1170X627X1166", y ="Lys",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Lys<-sp_Lys+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Lys", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### Met ####
+colnames(df_scans_average)[200]<- "X1177"
+df_scans_average$X1177X1174<- df_scans_average$X1177 +
+df_scans_average$`1174`
+
+sp_Met <- ggscatter(df_scans_average, x = "X1177X1174", y ="Met",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Met<-sp_Met+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Met", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits=c(0.00042, 0.00097))
+
+#### Thr ####
+colnames(df_scans_average)[4]<- "X415"
+df_scans_average$X415X1030<- df_scans_average$X415 +
+df_scans_average$`1030` + df_scans_average$`1550`
+
+sp_Thr <- ggscatter(df_scans_average, x = "X415X1030", y ="Thr",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Thr<-sp_Thr+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Thr", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits=c(0.00063, 0.0017))
+
+#### Tyr ####
+colnames(df_scans_average)[252]<- "X1363"
+sp_Tyr <- ggscatter(df_scans_average, x = "X1363", y ="Tyr",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Tyr<-sp_Tyr+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Tyr", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits=c(0.00059, 0.00087))
+
+#### Val ####
+colnames(df_scans_average)[293]<- "X1505"
+
+sp_Val <- ggscatter(df_scans_average, x = "X1505", y ="Val",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Val<-sp_Val+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Val", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### Arrange all plots aa ####
+All_correlations <- ggarrange(sp_His, sp_Iso, sp_Leu, sp_Lys, sp_Met, sp_Phe, sp_Thr, sp_Tyr, sp_Val, nrow = 3, ncol = 3)
+
+
+
+#### Mixes ####
+df_scans_average$X1363X687 <- df_scans_average$X1363 + df_scans_average$X687 #PheTyr
+df_scans_average$X828X770 <- df_scans_average$X828 + df_scans_average$X770 #IsoLeu
+
+sp_PheTyr <- ggscatter(df_scans_average, x = "X1363X687", y ="PheTyr",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_PheTyr<-sp_PheTyr+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Phe + Tyr", x=" ", y=" ")
+
+sp_IsoLeu <- ggscatter(df_scans_average, x = "X828X770", y ="IsoLeu",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_IsoLeu<-sp_IsoLeu+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Iso + Leu", x=" ", y=" ")
+
+Mixes_correlations <- ggarrange(sp_IsoLeu, sp_PheTyr, labels = c("A", "B"))
+
+annotate_figure(Mixes_correlations,
+          left = text_grob("Aminoacid content", rot = 90),
+          bottom= text_grob("Raman intensity"))
+
+
+
+#### Total protein ####
+colnames(df_scans_average)[156]<- "X1015"
+colnames(df_scans_average)[159]<- "X1026"
+
+df_scans_average$X1015X1026 <- df_scans_average$X1015 + df_scans_average$X1026 #2 prot peaks
+
+sp_TotalProtein <- ggscatter(df_scans_average, x = "X1015X1026", y ="TotalProt",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_TotalProtein<-sp_TotalProtein+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= " ", x="Raman intensity", y="Total protein content")
+
+```
+
+
+```{r correlations with std, echo=FALSE}
+colnames(df_sc)<- round(wavelengths.trim)
+df_sc$cell.name <- cell.name
+
+
+library ("ggpubr")
+#### Phe ####
+df_scans_average$X687X1026<- df_scans_average$"687" + df_scans_average$"1026"
+
+df_scans_average$X687X1026X1022<- df_scans_average$X687 + df_scans_average$"1026" + df_scans_average$"1022"
+df_scans_average$X1026X1022<- df_scans_average$"1026" + df_scans_average$"1022"
+
+sp_Phe <- ggscatter(df_scans_average, x = "X1026X1022", y ="Phe",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   ) 
+
+sp_Phe<-sp_Phe+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Phe", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific,limits = c(0.00085, 0.0015))
+
+## calculate std of pooled groups
+sd_C <- sd(rbind (subset(df_sc$`1026`,cell.name=="c.necator"),subset(df_sc$`1022`,cell.name=="c.necator")))
+sd_M <- sd(rbind (subset(df_sc$`1026`,cell.name=="m.extorame"),subset(df_sc$`1022`,cell.name=="m.extorame")))
+sd_P <- sd(rbind (subset(df_sc$`1026`,cell.name=="p.pastons"),subset(df_sc$`1022`,cell.name=="p.pastons")))
+sd_Y <- sd(rbind (subset(df_sc$`1026`,cell.name=="y.lipolytica"),subset(df_sc$`1022`,cell.name=="y.lipolytica")))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Phe<- ggplot(data= df_scans_average, aes(x = X1026X1022, y =Phe))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Phe", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Phe-c(0.073,0.083,0.087,0.055), ymax=Phe+c(0.073,0.083,0.087,0.055)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = df_scans_average$X1026X1022-sd_x , xmax= df_scans_average$X1026X1022+sd_x ), size=0.3, width = 0.00001)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.93"))), vjust= -10)+
+  scale_x_continuous(labels=fancy_scientific)
+  
+
+#### His ####
+colnames(df_scans_average)[64] <- "X659"
+
+df_scans_average$X659X555<- df_scans_average$"X659" + df_scans_average$`555` 
+
+sp_His <- ggscatter(df_scans_average, x = "X659X555", y ="His",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_His<-sp_His+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "His", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific, limits = c(0.0007, 0.0028))
+
+
+df_scans_average$`659`
+
+plot_His<- ggplot(data= df_scans_average, aes(x = X659X555, y =His))+
+  geom_point()+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Phe", x=" ", y=" ")+
+  geom_text(label = c( expression(paste("R"^"2", "= 0.93")), " ", " ",  " "), vjust = -5)+
+  scale_x_continuous(labels=fancy_scientific)
+
+## calculate std of pooled groups
+sd_C <- sd(rbind (subset(df_sc$`659`,cell.name=="c.necator"),subset(df_sc$`555`,cell.name=="c.necator")))
+sd_M <- sd(rbind (subset(df_sc$`659`,cell.name=="m.extorame"),subset(df_sc$`555`,cell.name=="m.extorame")))
+sd_P <- sd(rbind (subset(df_sc$`659`,cell.name=="p.pastons"),subset(df_sc$`555`,cell.name=="p.pastons")))
+sd_Y <- sd(rbind (subset(df_sc$`659`,cell.name=="y.lipolytica"),subset(df_sc$`555`,cell.name=="y.lipolytica")))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_His<- ggplot(data= df_scans_average, aes(x = X659X555, y = His))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "His", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= His-c(0.034,0.037,0.044,0.04), ymax= His+c(0.034,0.037,0.044,0.04)), size=0.3, width = 0.00015)+
+  geom_errorbarh (aes(xmin = X659X555-sd_x , xmax= X659X555+sd_x ), size=0.3, height = 0.1)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.99"))), vjust= -10)+
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Ile ####
+#colnames(df_scans_average)[107]<- "X828"
+colnames(df_scans_average)[67]<- "X671"
+colnames(df_scans_average)[68]<- "X675"
+#colnames(df_scans_average)[90]<- "X762"
+
+
+df_scans_average$X762X671 <- df_scans_average$X762 + df_scans_average$X671+ df_scans_average$X671
+  #df_scans_average$`1188` +df_scans_average$`675`  +df_scans_average$`824`+ df_scans_average$`766`+ df_scans_average$`559`
+
+
+sp_Iso <- ggscatter(df_scans_average, x = "X671", y ="Ile",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Iso<-sp_Iso+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Ile", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific,limits = c(0.0004, 0.00053))
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`671`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`671`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`671`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`671`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Ile<- ggplot(data= df_scans_average, aes(x = X671, y = Iso))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Ile", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Iso-c(0.068,0.099,0.099,0.056), ymax= Iso+c(0.068,0.099,0.099,0.056)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = X671-sd_x , xmax= X671+sd_x ), size=0.3, height = 0.03)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.66"))), vjust= -10)+
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Leu ####
+#colnames(df_scans_average)[92]<- "X770"
+colnames(df_scans_average)[71]<- "X687"
+colnames(df_scans_average)[90]<- "X762"
+colnames(df_scans_average)[91]<- "X766"
+
+
+#df_scans_average$X770X1026X671<- df_scans_average$X770 + df_scans_average$X1026 +df_scans_average$`671`
+
+sp_Leu <- ggscatter(df_scans_average, x = "X762", y ="Leu",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Leu<-sp_Leu+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Leu", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific)
+
+
+
+#### Lys ####
+colnames(df_scans_average)[198]<- "X1170"
+#df_scans_average$X1170X627X1166<- df_scans_average$X1170 + df_scans_average$`1166` +df_scans_average$`627`
+
+colnames(df_scans_average)[203]<- "X1188"
+df_scans_average$X1188X1363<- df_scans_average$X1188 + df_scans_average$`1363`
+
+sp_Lys <- ggscatter(df_scans_average, x = "X1188", y ="Lys",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Lys<-sp_Lys+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Lys", x=" ", y=" ")+
+  scale_x_continuous(labels=fancy_scientific, limits= c(0.00018, 0.00031))
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`1188`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`1188`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`1188`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`1188`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Lys<- ggplot(data= df_scans_average, aes(x = X1188, y = Lys))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Lys", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Lys-c(0.129,0.23,0.17,0.113), ymax= Lys+c(0.129,0.23,0.17,0.113)), size=0.3, width = 0.000007)+
+  geom_errorbarh (aes(xmin = X1188-sd_x , xmax= X1188+sd_x ), size=0.3, height = 0.04)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.94"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+
+#### Met ####
+colnames(df_scans_average)[200]<- "X1177"
+df_scans_average$X1177X1174<- df_scans_average$X1177 +
+df_scans_average$`1174`
+
+sp_Met <- ggscatter(df_scans_average, x = "X1177X1174", y ="Met",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Met<-sp_Met+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Met", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits = c(0.0004, 0.0014))
+
+## calculate std of pooled groups
+sd_C <- sd(rbind (subset(df_sc$X1177,cell.name=="c.necator"),subset(df_sc$`1174`,cell.name=="c.necator")))
+sd_M <- sd(rbind (subset(df_sc$X1177,cell.name=="m.extorame"),subset(df_sc$`1174`,cell.name=="m.extorame")))
+sd_P <- sd(rbind (subset(df_sc$X1177,cell.name=="p.pastons"),subset(df_sc$`1174`,cell.name=="p.pastons")))
+sd_Y <- sd(rbind (subset(df_sc$X1177,cell.name=="y.lipolytica"),subset(df_sc$`1174`,cell.name=="y.lipolytica")))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Met<- ggplot(data= df_scans_average, aes(x = X1177X1174, y = Met))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Met", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Met-c(0.042,0.047,0.026,0.022), ymax= Met+c(0.042,0.047,0.026,0.022)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = X1177X1174-sd_x , xmax=X1177X1174+sd_x ), size=0.3, height = 0.007)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.95"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### Thr #### Threonine
+#colnames(df_scans_average)[4]<- "X415"
+#df_scans_average$X415X1030<- df_scans_average$X415 +
+#df_scans_average$`1030` + df_scans_average$`1550`
+
+colnames(df_scans_average)[4]<- "X762"
+colnames(df_scans_average)[307]<- "X1553"
+df_scans_average$X762X1553<- df_scans_average$X762 + df_scans_average$X1553
+
+
+sp_Thr <- ggscatter(df_scans_average, x = "X1553", y ="Thr",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Thr<-sp_Thr+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Thr", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits = c(0.00026, 0.00039))
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`1553`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`1553`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`1553`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`1553`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Thr<- ggplot(data= df_scans_average, aes(x = X1553, y = Thr))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Thr", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Thr-c(0.086,0.107,0.115,0.068), ymax= Thr+c(0.086,0.107,0.115,0.068)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = X1553-sd_x , xmax= X1553+sd_x ), size=0.3, height = 0.04)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.74"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### Tyr #### Tyrosine
+#colnames(df_scans_average)[252]<- "X1363"
+colnames(df_scans_average)[107]<- "X828"
+colnames(df_scans_average)[108]<- "X832"
+colnames(df_scans_average)[109]<- "X836"
+
+
+df_scans_average$X828X832<- df_scans_average$X828 + df_scans_average$X836+ df_scans_average$X832
+
+sp_Tyr <- ggscatter(df_scans_average, x = "X828", y ="Tyr",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Tyr<-sp_Tyr+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Tyr", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific)#,limits = c(0.00054, 0.00085))
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`828`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`828`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`828`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`828`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Tyr<- ggplot(data= df_scans_average, aes(x = X828, y = Tyr))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Tyr", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Tyr-c(0.086,0.107,0.115,0.068), ymax= Tyr+c(0.086,0.107,0.115,0.068)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = X828-sd_x , xmax= X828+sd_x ), size=0.3, height = 0.009)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.74"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Val ####
+colnames(df_scans_average)[292]<- "X1502"
+
+sp_Val <- ggscatter(df_scans_average, x = "X1502", y ="Val",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Val<-sp_Val+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Val", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits = c(0.0001, 0.00042))
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`1502`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`1502`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`1502`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`1502`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Val<- ggplot(data= df_scans_average, aes(x = X1502, y = Val))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Val", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Val-c(0.108,0.115,0.114,0.07), ymax= Val+c(0.108,0.115,0.114,0.07)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = X1502-sd_x , xmax= X1502+sd_x ), size=0.3, height = 0.02)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.74"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+#### Cys ####
+colnames(df_scans_average)[29]<- "X518"
+
+sp_Cys <- ggscatter(df_scans_average, x = "X518", y ="Cys",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Cys<-sp_Cys+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Cys", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific)
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`518`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`518`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`518`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`518`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Cys<- ggplot(data= df_scans_average, aes(x = X518, y = Cys))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Cys", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Cys-c(0.0115,0.0091,0.016,0.0139), ymax= Cys+c(0.0115,0.0091,0.016,0.0139)), size=0.3, width = 0.00002)+
+  geom_errorbarh (aes(xmin = X518-sd_x , xmax= X518+sd_x ), size=0.3, height = 0.002)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.99"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### Tryptophan ####
+colnames(df_scans_average)[92]<- "X770"
+colnames(df_scans_average)[101]<- "X805"
+colnames(df_scans_average)[179]<- "X1100"
+colnames(df_scans_average)[317]<- "X1587"
+
+df_scans_average$X770X805<- df_scans_average$X770 + df_scans_average$X1587
+
+sp_Tryp<- ggscatter(df_scans_average, x = "X770", y ="Tryp",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_Tryp<-sp_Tryp+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Trp", x=" ", y=" ")+ 
+  scale_x_continuous(labels=fancy_scientific,limits = c(0.00025, 0.00052))
+
+## calculate std of pooled groups
+sd_C <- sd(subset(df_sc$`770`,cell.name=="c.necator"))
+sd_M <- sd(subset(df_sc$`770`,cell.name=="m.extorame"))
+sd_P <- sd(subset(df_sc$`770`,cell.name=="p.pastons"))
+sd_Y <- sd(subset(df_sc$`770`,cell.name=="y.lipolytica"))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_Tryp<- ggplot(data= df_scans_average, aes(x = X770, y = Tryp))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Tryp", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= Tryp-c(0.0115,0.0091,0.016,0.0139), ymax= Tryp+c(0.0115,0.0091,0.016,0.0139)), size=0.3, width = 0.00001)+
+  geom_errorbarh (aes(xmin = X770-sd_x , xmax= X770+sd_x ), size=0.3, width = 0.0001)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.99"))), vjust= -11)+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+#### Arrange all plots aa #### 
+All_correlations <- ggpubr::ggarrange(sp_His, sp_Iso, #sp_Leu, 
+                              sp_Lys, sp_Met, sp_Phe, sp_Thr, sp_Tryp, sp_Val, 
+                              nrow = 4, ncol = 3,align = "hv") 
+
+
+All_correlations <- ggpubr::ggarrange(plot_His, plot_Ile, #sp_Leu, 
+                              plot_Lys, plot_Met, plot_Phe, plot_Thr, plot_Tryp, plot_Val, plot_Cys,
+                              nrow = 3, ncol = 3,align = "hv") 
+
+Extra_correlations <- ggarrange(sp_Tyr, sp_Cys, nrow = 4, ncol = 3,align = "hv")
+
+All_together <- ggarrange(All_correlations ,Extra_correlations, labels = c("A", "B")) 
+
+All_correlations <-annotate_figure(All_correlations,
+          left = text_grob("Amino acid content", rot = 90,size=15, face="bold"),
+          bottom= text_grob("Raman intensity", size=15, face="bold"))
+
+#### Mixes ####
+df_scans_average$X1363X687 <- df_scans_average$X1363 + df_scans_average$X687 #PheTyr
+df_scans_average$X828X770 <- df_scans_average$X828 + df_scans_average$X770 #IsoLeu
+
+sp_PheTyr <- ggscatter(df_scans_average, x = "X1363X687", y ="PheTyr",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_PheTyr<-sp_PheTyr+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Phe + Tyr", x=" ", y=" ")
+
+sp_IsoLeu <- ggscatter(df_scans_average, x = "X828X770", y ="IsoLeu",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_IsoLeu<-sp_IsoLeu+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Iso + Leu", x=" ", y=" ")
+
+Mixes_correlations <- ggarrange(sp_IsoLeu, sp_PheTyr, labels = c("A", "B"))
+
+annotate_figure(Mixes_correlations,
+          left = text_grob("Aminoacid content", rot = 90),
+          bottom= text_grob("Raman intensity"))
+
+
+
+#### Total protein ####
+#Classic peaks
+colnames(df_scans_average)[156]<- "X1015"
+colnames(df_scans_average)[159]<- "X1026"
+
+df_scans_average$X1015X1026 <- df_scans_average$X1015 + df_scans_average$X1026 #2 prot peaks
+
+sp_TotalProtein1 <- ggscatter(df_scans_average, x = "X1015X1026", y ="TotalProt",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_TotalProtein1<-sp_TotalProtein1+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Aromatic peaks", x=" ", y=" ")
+
+## calculate std of pooled groups
+sd_C <- sd(rbind (subset(df_sc$`1015`,cell.name=="c.necator"),subset(df_sc$`1026`,cell.name=="c.necator")))
+sd_M <- sd(rbind (subset(df_sc$`1015`,cell.name=="m.extorame"),subset(df_sc$`1026`,cell.name=="m.extorame")))
+sd_P <- sd(rbind (subset(df_sc$`1015`,cell.name=="p.pastons"),subset(df_sc$`1026`,cell.name=="p.pastons")))
+sd_Y <- sd(rbind (subset(df_sc$`1015`,cell.name=="y.lipolytica"),subset(df_sc$`1026`,cell.name=="y.lipolytica")))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_TotalProtein1 <- ggplot(data= df_scans_average, aes(x = X1015X1026, y = TotalProt))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Aromatic peaks", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= TotalProt-c(0.042,0.047,0.026,0.022), ymax= TotalProt+c(0.042,0.047,0.026,0.022)), size=0.3, width = 0.00007)+
+  geom_errorbarh (aes(xmin = X1015X1026-sd_x , xmax=X1015X1026+sd_x ), size=0.3, height = 0.03)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.92"))), vjust= -6)+
+  scale_x_continuous(labels=fancy_scientific)
+
+
+##Peaks I found
+colnames(df_scans_average)[40]<- "X563"
+colnames(df_scans_average)[41]<- "X567"
+colnames(df_scans_average)[203]<- "X1188"
+colnames(df_scans_average)[213]<- "X1224"
+colnames(df_scans_average)[292]<- "X1502"
+colnames(df_scans_average)[293]<- "X1505"
+
+df_scans_average$X563X567 <- df_scans_average$X563 + df_scans_average$X567 + df_scans_average$X1188 + df_scans_average$X1224+
+  df_scans_average$X1502 #2 prot peaks
+
+sp_TotalProtein <- ggscatter(df_scans_average, x = "X563X567", y ="TotalProt",
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
+   conf.int = TRUE # Add confidence interval
+   )
+sp_TotalProtein<-sp_TotalProtein+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
+  labs(title= "Best correlation", x=" ", y=" ")
+
+#Totalprot <- ggarrange(sp_TotalProtein, sp_TotalProtein1, ncol = 2)
+
+## calculate std of pooled groups
+sd_C <- sd(rbind (subset(df_sc$`563`,cell.name=="c.necator"),subset(df_sc$`567`,cell.name=="c.necator"), subset(df_sc$`1188`,cell.name=="c.necator"),subset(df_sc$`1224`,cell.name=="c.necator"),subset(df_sc$`1502`,cell.name=="c.necator")))
+
+sd_M <- sd(rbind (subset(df_sc$`563`,cell.name=="m.extorame"),subset(df_sc$`567`,cell.name=="m.extorame"),
+                  subset(df_sc$`1188`,cell.name=="m.extorame"),subset(df_sc$`1224`,cell.name=="m.extorame"),subset(df_sc$`1502`,cell.name=="m.extorame")))
+
+sd_P <- sd(rbind (subset(df_sc$`563`,cell.name=="p.pastons"),subset(df_sc$`567`,cell.name=="p.pastons"),
+                  subset(df_sc$`1188`,cell.name=="p.pastons"),subset(df_sc$`1224`,cell.name=="p.pastons"),subset(df_sc$`1502`,cell.name=="p.pastons")))
+
+sd_Y <- sd(rbind (subset(df_sc$`563`,cell.name=="y.lipolytica"),subset(df_sc$`567`,cell.name=="y.lipolytica"),
+                  subset(df_sc$`1188`,cell.name=="y.lipolytica"),subset(df_sc$`1224`,cell.name=="y.lipolytica"),subset(df_sc$`1502`,cell.name=="y.lipolytica")))
+
+sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
+
+
+plot_TotalProtein <- ggplot(data= df_scans_average, aes(x = X563X567, y = TotalProt))+
+  geom_point(size=2.5)+
+  theme_classic()+
+  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
+  labs(title= "Best calibration", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= TotalProt-c(0.042,0.047,0.026,0.022), ymax= TotalProt+c(0.042,0.047,0.026,0.022)), size=0.3, width = 0.00005)+
+  geom_errorbarh (aes(xmin = X563X567-sd_x , xmax= X563X567+sd_x ), size=0.3, height = 0.03)+
+  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.9"))), vjust= -6)+
+  scale_x_continuous(labels=fancy_scientific)
+
+Totalprot <- ggarrange(plot_TotalProtein, plot_TotalProtein1, ncol = 2)
+
+All_together <- ggpubr::ggarrange(All_correlations ,Totalprot, labels = c("A", "B"), nrow = 2) 
+
+```
