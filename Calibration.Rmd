@@ -262,7 +262,8 @@ df_scans_average$Lys <- c(0.921,1.62,1.24,0.81)
         df_scans_average$Val <- c(0.774,0.82,0.811,0.497)
         df_scans_average$Tryp <- c(0.216,0.131,0.208,0.14)
         df_scans_average$Cys <- c(0.082,0.065,0.116,0.099) ##Cystein & cystine
-        df_scans_average$TotalProt <-c(rep(0.58515),rep(0.75595),rep(0.6432),rep(0.4319))
+        #df_scans_average$TotalProt <-c(rep(0.58515*100/116),rep(0.755950.58515*100/116),rep(0.64320.58515*100/116),rep(0.43190.58515*100/116))
+df_scans_average$TotalProt <-c(10.09,13.03,11.09,7.45)
 
 df <- melt(df_scans_average ,  id.vars = 'Phe', variable.name = 'series')
 
@@ -324,8 +325,9 @@ Totalprot_corr <- rbind(rownames(peaks_totalprot),peaks_totalprot$TotalProt)
 ```{r peaks total protein, echo=FALSE}
 df_sc <- as.data.frame(hs.norm@data$spc, colnames=hs.norm@wavelength , check.names=FALSE) #,row.names = levels(as.factor(cell.name)))
 
-df_sc$TotalProt<-c(rep(0.58515,460),rep(0.75595,423),rep(0.6432,418),rep(0.4319,416))
-df_scans_average$TotalProt <-c(rep(0.58515),rep(0.75595),rep(0.6432),rep(0.4319))
+df_sc$TotalProt<-c(rep(10.09,460),rep(13.03,423),rep(11.09,418),rep(7.45,416))
+df_scans_average$TotalProt <-c(10.09,rep(13.03),rep(11.09),rep(7.45))
+
  
 #Preotein Ramanone paper: 853, 1002, 1242, 1308cm−1, etc / 606, 992, 117, 11586, 2850, 3063 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3251995/
 #Our Phe peak is in ~1015
@@ -1833,61 +1835,11 @@ plot_TotalProtein1 <- ggplot(data= df_scans_average, aes(x = X1015X1026, y = Tot
   geom_point(size=2.5)+
   theme_classic()+
   geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
-  labs(title= "Aromatic peaks", x=" ", y=" ")+
-  geom_errorbar(aes(ymin= TotalProt-c(0.042,0.047,0.026,0.022), ymax= TotalProt+c(0.042,0.047,0.026,0.022)), size=0.3, width = 0.00007)+
+  labs(title= "Total protein", x=" ", y=" ")+
+  geom_errorbar(aes(ymin= TotalProt-c(0.000593127,0.0006018644,0.0003908174,0.0004074324), ymax= TotalProt+c(0.000593127,0.0006018644,0.0003908174,0.0004074324)), size=0.3, width = 0.00007)+
   geom_errorbarh (aes(xmin = X1015X1026-sd_x , xmax=X1015X1026+sd_x ), size=0.3, height = 0.03)+
   geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.92"))), vjust= -6)+
   scale_x_continuous(labels=fancy_scientific)
 
-
-##Peaks I found
-colnames(df_scans_average)[40]<- "X563"
-colnames(df_scans_average)[41]<- "X567"
-colnames(df_scans_average)[203]<- "X1188"
-colnames(df_scans_average)[213]<- "X1224"
-colnames(df_scans_average)[292]<- "X1502"
-colnames(df_scans_average)[293]<- "X1505"
-
-df_scans_average$X563X567 <- df_scans_average$X563 + df_scans_average$X567 + df_scans_average$X1188 + df_scans_average$X1224+
-  df_scans_average$X1502 #2 prot peaks
-
-sp_TotalProtein <- ggscatter(df_scans_average, x = "X563X567", y ="TotalProt",
-   add = "reg.line",  # Add regressin line
-   add.params = list(color = "goldenrod3", fill = "goldenrod3"), # Customize reg. line
-   conf.int = TRUE # Add confidence interval
-   )
-sp_TotalProtein<-sp_TotalProtein+stat_cor( aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))+
-  labs(title= "Best correlation", x=" ", y=" ")
-
-#Totalprot <- ggarrange(sp_TotalProtein, sp_TotalProtein1, ncol = 2)
-
-## calculate std of pooled groups
-sd_C <- sd(rbind (subset(df_sc$`563`,cell.name=="c.necator"),subset(df_sc$`567`,cell.name=="c.necator"), subset(df_sc$`1188`,cell.name=="c.necator"),subset(df_sc$`1224`,cell.name=="c.necator"),subset(df_sc$`1502`,cell.name=="c.necator")))
-
-sd_M <- sd(rbind (subset(df_sc$`563`,cell.name=="m.extorame"),subset(df_sc$`567`,cell.name=="m.extorame"),
-                  subset(df_sc$`1188`,cell.name=="m.extorame"),subset(df_sc$`1224`,cell.name=="m.extorame"),subset(df_sc$`1502`,cell.name=="m.extorame")))
-
-sd_P <- sd(rbind (subset(df_sc$`563`,cell.name=="p.pastons"),subset(df_sc$`567`,cell.name=="p.pastons"),
-                  subset(df_sc$`1188`,cell.name=="p.pastons"),subset(df_sc$`1224`,cell.name=="p.pastons"),subset(df_sc$`1502`,cell.name=="p.pastons")))
-
-sd_Y <- sd(rbind (subset(df_sc$`563`,cell.name=="y.lipolytica"),subset(df_sc$`567`,cell.name=="y.lipolytica"),
-                  subset(df_sc$`1188`,cell.name=="y.lipolytica"),subset(df_sc$`1224`,cell.name=="y.lipolytica"),subset(df_sc$`1502`,cell.name=="y.lipolytica")))
-
-sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
-
-
-plot_TotalProtein <- ggplot(data= df_scans_average, aes(x = X563X567, y = TotalProt))+
-  geom_point(size=2.5)+
-  theme_classic()+
-  geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
-  labs(title= "Best calibration", x=" ", y=" ")+
-  geom_errorbar(aes(ymin= TotalProt-c(0.042,0.047,0.026,0.022), ymax= TotalProt+c(0.042,0.047,0.026,0.022)), size=0.3, width = 0.00005)+
-  geom_errorbarh (aes(xmin = X563X567-sd_x , xmax= X563X567+sd_x ), size=0.3, height = 0.03)+
-  geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.9"))), vjust= -6)+
-  scale_x_continuous(labels=fancy_scientific)
-
-Totalprot <- ggarrange(plot_TotalProtein, plot_TotalProtein1, ncol = 2)
-
-All_together <- ggpubr::ggarrange(All_correlations ,Totalprot, labels = c("A", "B"), nrow = 2) 
 
 ```
