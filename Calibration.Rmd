@@ -1831,13 +1831,14 @@ sd_Y <- sd(rbind (subset(df_sc$`1015`,cell.name=="y.lipolytica"),subset(df_sc$`1
 sd_x <- as.vector(cbind(sd_C, sd_M, sd_P, sd_Y))
 
 
+
 plot_TotalProtein1 <- ggplot(data= df_scans_average, aes(x = X1015X1026, y = TotalProt))+
   geom_point(size=2.5)+
   theme_classic()+
   geom_smooth(method = lm, color = "goldenrod3", fill = "goldenrod3")+
   labs(title= "Total protein", x=" ", y=" ")+
-  geom_errorbar(aes(ymin= TotalProt-c(0.000593127,0.0006018644,0.0003908174,0.0004074324), ymax= TotalProt+c(0.000593127,0.0006018644,0.0003908174,0.0004074324)), size=0.3, width = 0.00007)+
-  geom_errorbarh (aes(xmin = X1015X1026-sd_x , xmax=X1015X1026+sd_x ), size=0.3, height = 0.03)+
+  geom_errorbar(aes(ymin= TotalProt-c(0.097722886,0.132274111,0.1074458,0.070703327), ymax= TotalProt+c(0.097722886,0.132274111,0.1074458,0.070703327)), size=0.3, width = 0.00007)+
+  geom_errorbarh (aes(xmin = X1015X1026-sd_x , xmax=X1015X1026+sd_x ), size=0.3, height = 0.4)+
   geom_text(label = c( " ", " ",  " ",expression(paste("R"^"2", "= 0.92"))), vjust= -6)+
   scale_x_continuous(labels=fancy_scientific)
 
